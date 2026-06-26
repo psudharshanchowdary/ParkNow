@@ -1,0 +1,22 @@
+# Node modules
+node_modules/
+
+# Env files
+.env
+.env.*
+
+# Build outputs
+ios/build/
+android/build/
+build/
+
+# Firebase configuration files
+google-services.json
+GoogleService-Info.plist
+
+# Keystore / credentials
+*.keystore
+
+# OS files
+.DS_Store
+Thumbs.db
