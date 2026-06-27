@@ -64,4 +64,16 @@ Built by Antigravity — daily commits over 4 weeks
 *(Placeholder: Instructions for setting up development environment, installing node packages, and starting the Metro bundler will go here.)*
 
 ## Screenshots
-*(Placeholder: Screenshots of the driver map, booking interface, and admin dashboard will go here.)*
+
+### 1. Authentication & Home Map Flow
+![Authentication & Home Map](screenshots/1_auth_and_home.png)
+
+### 2. Spot Selection & Booking Flow
+![Spot Selection & Booking Flow](screenshots/2_booking_flow.png)
+
+### 3. Live Admin Lot View & Revenue Reporting
+![Live Admin Lot View & Revenue Reporting](screenshots/3_admin_dashboard.png)
+
+### 4. Community Reporting & Rewards
+![Community Reporting & Rewards](screenshots/4_features_and_rewards.png)
+
