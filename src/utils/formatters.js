@@ -1,7 +1,9 @@
 /**
  * @file formatters.js
- * @description Distance formatting and calculation utilities.
+ * @description Distance formatting, distance calculations, and spot label styling.
  */
+
+import { COLORS } from '../theme/colors';
 
 /** Calculates distance between two coordinates using the Haversine formula. */
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -29,6 +31,25 @@ export const formatDistance = (km) => {
 /** Formats a currency value as Indian Rupees. */
 export const formatPrice = (amount) => {
   return `₹${amount}`;
+};
+
+/** Formats spot label for display. */
+export const formatSpotLabel = (label) => {
+  if (label && label.startsWith('Spot ')) {
+    return label;
+  }
+  return `Spot ${label}`;
+};
+
+/** Returns color hex based on spot status. */
+export const getSpotColor = (status) => {
+  if (status === 'available') {
+    return COLORS.available;
+  }
+  if (status === 'occupied') {
+    return COLORS.occupied;
+  }
+  return COLORS.coins;
 };
 
 /** Placeholder for date formatting. */
