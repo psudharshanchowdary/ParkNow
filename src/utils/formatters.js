@@ -1,6 +1,6 @@
 /**
  * @file formatters.js
- * @description Distance formatting, distance calculations, and spot label styling.
+ * @description Distance formatting, distance calculations, currency, date, and spot label styling.
  */
 
 import { COLORS } from '../theme/colors';
@@ -33,6 +33,44 @@ export const formatPrice = (amount) => {
   return `₹${amount}`;
 };
 
+/** Formats currency in Indian style with commas. */
+export const formatCurrency = (amount) => {
+  const formatted = Math.round(amount).toLocaleString('en-IN');
+  return `₹${formatted}`;
+};
+
+/** Calculates 18% GST on an amount rounded to nearest integer. */
+export const calculateGST = (amount) => {
+  return Math.round(amount * 0.18);
+};
+
+/** Formats a Date object into "Today, 27 Jun" or "Mon, 28 Jun" style string. */
+export const formatBookingDate = (dateObj) => {
+  if (!dateObj) return '';
+  const date = new Date(dateObj);
+  const today = new Date();
+  const isToday =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+
+  const dayName = isToday
+    ? 'Today'
+    : date.toLocaleDateString('en-US', { weekday: 'short' });
+  const dayNum = date.getDate();
+  const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+
+  return `${dayName}, ${dayNum} ${monthName}`;
+};
+
+/** Formats an hour number (0-23) to 12hr format string (e.g. "10:00 AM"). */
+export const formatTime = (hour) => {
+  if (typeof hour !== 'number') return '';
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+  return `${displayHour}:00 ${period}`;
+};
+
 /** Formats spot label for display. */
 export const formatSpotLabel = (label) => {
   if (label && label.startsWith('Spot ')) {
@@ -52,8 +90,7 @@ export const getSpotColor = (status) => {
   return COLORS.coins;
 };
 
-/** Placeholder for date formatting. */
-export const formatDate = () => {};
-
-/** Placeholder for time formatting. */
-export const formatTime = () => {};
+/** Placeholder for general date formatting. */
+export const formatDate = (d) => {
+  return formatBookingDate(d);
+};
