@@ -157,3 +157,30 @@ export const getLots = async () => {
 export const subscribeToLot = (lotId, callback) => {
   return subscribeLotDetail(lotId, callback);
 };
+
+/**
+ * Filter parking lots within a maximum radius (in kilometers) from user's coordinates using Haversine formula.
+ * @param {Array} lots 
+ * @param {number} userLat 
+ * @param {number} userLng 
+ * @param {number} maxRadiusKm 
+ * @returns {Array} Filtered lots sorted by proximity
+ */
+export const filterLotsByDistance = (lots = [], userLat, userLng, maxRadiusKm = 5) => {
+  const toRad = (value) => (value * Math.PI) / 180;
+  return lots
+    .map((lot) => {
+      if (!lot.latitude || !lot.longitude) return { ...lot, distanceKm: 999 };
+      const dLat = toRad(lot.latitude - userLat);
+      const dLon = toRad(lot.longitude - userLng);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(userLat)) * Math.cos(toRad(lot.latitude)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceKm = 6371 * c;
+      return { ...lot, distanceKm: Number(distanceKm.toFixed(2)) };
+    })
+    .filter((lot) => lot.distanceKm <= maxRadiusKm)
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+};
+
