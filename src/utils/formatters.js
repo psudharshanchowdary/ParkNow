@@ -1,6 +1,7 @@
 /**
  * @file formatters.js
- * @description Distance formatting, distance calculations, currency, date, and spot label styling.
+ * @description Distance formatting, distance calculations, currency, date,
+ *              spot label styling, and booking ID utilities.
  */
 
 import { COLORS } from '../theme/colors';
@@ -33,7 +34,7 @@ export const formatPrice = (amount) => {
   return `₹${amount}`;
 };
 
-/** Formats currency in Indian style with commas. */
+/** Formats currency in Indian style with commas (e.g. "₹1,250"). */
 export const formatCurrency = (amount) => {
   const formatted = Math.round(amount).toLocaleString('en-IN');
   return `₹${formatted}`;
@@ -44,7 +45,7 @@ export const calculateGST = (amount) => {
   return Math.round(amount * 0.18);
 };
 
-/** Formats a Date object into "Today, 27 Jun" or "Mon, 28 Jun" style string. */
+/** Formats a Date object or ISO string into "Today, 27 Jun" or "Mon, 28 Jun". */
 export const formatBookingDate = (dateObj) => {
   if (!dateObj) return '';
   const date = new Date(dateObj);
@@ -63,7 +64,7 @@ export const formatBookingDate = (dateObj) => {
   return `${dayName}, ${dayNum} ${monthName}`;
 };
 
-/** Formats an hour number (0-23) to 12hr format string (e.g. "10:00 AM"). */
+/** Formats an hour number (0-23) to 12-hour format string (e.g. "10:00 AM"). */
 export const formatTime = (hour) => {
   if (typeof hour !== 'number') return '';
   const period = hour >= 12 ? 'PM' : 'AM';
@@ -71,7 +72,7 @@ export const formatTime = (hour) => {
   return `${displayHour}:00 ${period}`;
 };
 
-/** Formats spot label for display. */
+/** Formats spot label for display (e.g. "A1" → "Spot A1"). */
 export const formatSpotLabel = (label) => {
   if (label && label.startsWith('Spot ')) {
     return label;
@@ -90,7 +91,13 @@ export const getSpotColor = (status) => {
   return COLORS.coins;
 };
 
-/** Placeholder for general date formatting. */
+/** Shortens a booking ID for display — returns first 8 characters uppercase. */
+export const shortBookingId = (bookingId) => {
+  if (!bookingId) return '--------';
+  return bookingId.slice(0, 8).toUpperCase();
+};
+
+/** Alias for formatBookingDate for backwards compatibility. */
 export const formatDate = (d) => {
   return formatBookingDate(d);
 };
