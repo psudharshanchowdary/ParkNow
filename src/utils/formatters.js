@@ -1,7 +1,7 @@
 /**
  * @file formatters.js
- * @description Distance formatting, distance calculations, currency, date,
- *              spot label styling, and booking ID utilities.
+ * @description Distance, currency, date, spot label, booking ID, time-ago,
+ *              and coin reason formatting utilities.
  */
 
 import { COLORS } from '../theme/colors';
@@ -95,6 +95,51 @@ export const getSpotColor = (status) => {
 export const shortBookingId = (bookingId) => {
   if (!bookingId) return '--------';
   return bookingId.slice(0, 8).toUpperCase();
+};
+
+/**
+ * Formats a Firestore timestamp, Date, or milliseconds value into a
+ * human-readable "time ago" string.
+ * Examples: "Just now", "3 min ago", "2 hrs ago", "4 days ago".
+ */
+export const formatTimeAgo = (timestamp) => {
+  if (!timestamp) return '';
+
+  let ms;
+  if (timestamp?.toDate) {
+    // Firestore Timestamp object
+    ms = timestamp.toDate().getTime();
+  } else if (timestamp instanceof Date) {
+    ms = timestamp.getTime();
+  } else if (typeof timestamp === 'number') {
+    ms = timestamp;
+  } else {
+    ms = new Date(timestamp).getTime();
+  }
+
+  const diffSec = Math.floor((Date.now() - ms) / 1000);
+
+  if (diffSec < 30) return 'Just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} ${diffHr === 1 ? 'hr' : 'hrs'} ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay} ${diffDay === 1 ? 'day' : 'days'} ago`;
+};
+
+/** Maps a coin transaction reason snake_case key to a user-friendly label. */
+export const formatCoinReason = (reason) => {
+  const map = {
+    community_report: 'Reported free spot',
+    booking_reward: 'Booking reward',
+    payment_discount: 'Used for discount',
+    referral: 'Referral bonus',
+    'Community Report Reward': 'Reported free spot',
+    'Booking Reward': 'Booking reward',
+  };
+  return map[reason] || reason;
 };
 
 /** Alias for formatBookingDate for backwards compatibility. */
