@@ -1,6 +1,6 @@
 /**
  * @file mockData.js
- * @description 5 realistic mock parking lots and their corresponding parking spots in Bengaluru.
+ * @description 5 realistic mock parking lots, their spots, and coin transaction history in Bengaluru.
  */
 
 export const LOTS = [
@@ -73,7 +73,7 @@ export const LOTS = [
 const generateMockSpots = (lotId) => {
   const spots = [];
   const rows = ['A', 'B', 'C', 'D'];
-  const occupiedIndexes = [2, 5, 8, 11, 14, 17]; // 6 indexes occupied
+  const occupiedIndexes = [2, 5, 8, 11, 14, 17];
 
   let index = 0;
   for (const row of rows) {
@@ -99,6 +99,61 @@ export const MOCK_SPOTS = {
   lot_004: generateMockSpots('lot_004'),
   lot_005: generateMockSpots('lot_005'),
 };
+
+/** Mock coin transactions for offline fallback and local testing. */
+const NOW = Date.now();
+const mins = (n) => new Date(NOW - n * 60 * 1000);
+
+export const COIN_TRANSACTIONS = [
+  {
+    id: 'txn_001',
+    userId: 'temp_user_id',
+    amount: 10,
+    type: 'earn',
+    reason: 'community_report',
+    createdAt: mins(5),
+  },
+  {
+    id: 'txn_002',
+    userId: 'temp_user_id',
+    amount: 5,
+    type: 'earn',
+    reason: 'booking_reward',
+    createdAt: mins(65),
+  },
+  {
+    id: 'txn_003',
+    userId: 'temp_user_id',
+    amount: 20,
+    type: 'spend',
+    reason: 'payment_discount',
+    createdAt: mins(130),
+  },
+  {
+    id: 'txn_004',
+    userId: 'temp_user_id',
+    amount: 50,
+    type: 'earn',
+    reason: 'referral',
+    createdAt: mins(1440),
+  },
+  {
+    id: 'txn_005',
+    userId: 'temp_user_id',
+    amount: 10,
+    type: 'earn',
+    reason: 'community_report',
+    createdAt: mins(2880),
+  },
+  {
+    id: 'txn_006',
+    userId: 'temp_user_id',
+    amount: 30,
+    type: 'spend',
+    reason: 'payment_discount',
+    createdAt: mins(4320),
+  },
+];
 
 export const BOOKINGS = [];
 
