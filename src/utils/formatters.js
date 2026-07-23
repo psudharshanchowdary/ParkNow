@@ -1,7 +1,8 @@
 /**
  * @file formatters.js
- * @description Distance, currency, date, spot label, booking ID, time-ago,
- *              and coin reason formatting utilities.
+ * @description All display formatting utilities for distances, currency, dates,
+ *              spot labels, booking IDs, time-ago, coin reasons, countdowns,
+ *              greetings, and percentage changes.
  */
 
 import { COLORS } from '../theme/colors';
@@ -23,27 +24,21 @@ export const calculateDistance = (lat1, lon1, lat2, lon2) => {
 
 /** Formats a distance in kilometers to a human-readable string. */
 export const formatDistance = (km) => {
-  if (km < 1) {
-    return `${Math.round(km * 1000)} m`;
-  }
+  if (km < 1) return `${Math.round(km * 1000)} m`;
   return `${km.toFixed(1)} km`;
 };
 
-/** Formats a currency value as Indian Rupees. */
-export const formatPrice = (amount) => {
-  return `₹${amount}`;
-};
+/** Formats a currency value as plain Indian Rupees string. */
+export const formatPrice = (amount) => `₹${amount}`;
 
-/** Formats currency in Indian style with commas (e.g. "₹1,250"). */
+/** Formats currency in Indian locale style with commas (e.g. "₹1,250"). */
 export const formatCurrency = (amount) => {
   const formatted = Math.round(amount).toLocaleString('en-IN');
   return `₹${formatted}`;
 };
 
-/** Calculates 18% GST on an amount rounded to nearest integer. */
-export const calculateGST = (amount) => {
-  return Math.round(amount * 0.18);
-};
+/** Calculates 18% GST on an amount, rounded to nearest integer. */
+export const calculateGST = (amount) => Math.round(amount * 0.18);
 
 /** Formats a Date object or ISO string into "Today, 27 Jun" or "Mon, 28 Jun". */
 export const formatBookingDate = (dateObj) => {
@@ -58,13 +53,10 @@ export const formatBookingDate = (dateObj) => {
   const dayName = isToday
     ? 'Today'
     : date.toLocaleDateString('en-US', { weekday: 'short' });
-  const dayNum = date.getDate();
-  const monthName = date.toLocaleDateString('en-US', { month: 'short' });
-
-  return `${dayName}, ${dayNum} ${monthName}`;
+  return `${dayName}, ${date.getDate()} ${date.toLocaleDateString('en-US', { month: 'short' })}`;
 };
 
-/** Formats an hour number (0-23) to 12-hour format string (e.g. "10:00 AM"). */
+/** Formats an hour integer (0-23) to 12-hour format string (e.g. "10:00 AM"). */
 export const formatTime = (hour) => {
   if (typeof hour !== 'number') return '';
   const period = hour >= 12 ? 'PM' : 'AM';
@@ -74,20 +66,14 @@ export const formatTime = (hour) => {
 
 /** Formats spot label for display (e.g. "A1" → "Spot A1"). */
 export const formatSpotLabel = (label) => {
-  if (label && label.startsWith('Spot ')) {
-    return label;
-  }
+  if (label && label.startsWith('Spot ')) return label;
   return `Spot ${label}`;
 };
 
-/** Returns color hex based on spot status. */
+/** Returns a color hex string based on spot status. */
 export const getSpotColor = (status) => {
-  if (status === 'available') {
-    return COLORS.available;
-  }
-  if (status === 'occupied') {
-    return COLORS.occupied;
-  }
+  if (status === 'available') return COLORS.available;
+  if (status === 'occupied') return COLORS.occupied;
   return COLORS.coins;
 };
 
@@ -98,27 +84,18 @@ export const shortBookingId = (bookingId) => {
 };
 
 /**
- * Formats a Firestore timestamp, Date, or milliseconds value into a
- * human-readable "time ago" string.
+ * Formats a Firestore timestamp, Date, or ms value into a "time ago" string.
  * Examples: "Just now", "3 min ago", "2 hrs ago", "4 days ago".
  */
 export const formatTimeAgo = (timestamp) => {
   if (!timestamp) return '';
-
   let ms;
-  if (timestamp?.toDate) {
-    // Firestore Timestamp object
-    ms = timestamp.toDate().getTime();
-  } else if (timestamp instanceof Date) {
-    ms = timestamp.getTime();
-  } else if (typeof timestamp === 'number') {
-    ms = timestamp;
-  } else {
-    ms = new Date(timestamp).getTime();
-  }
+  if (timestamp?.toDate) ms = timestamp.toDate().getTime();
+  else if (timestamp instanceof Date) ms = timestamp.getTime();
+  else if (typeof timestamp === 'number') ms = timestamp;
+  else ms = new Date(timestamp).getTime();
 
   const diffSec = Math.floor((Date.now() - ms) / 1000);
-
   if (diffSec < 30) return 'Just now';
   if (diffSec < 60) return `${diffSec}s ago`;
   const diffMin = Math.floor(diffSec / 60);
@@ -129,7 +106,7 @@ export const formatTimeAgo = (timestamp) => {
   return `${diffDay} ${diffDay === 1 ? 'day' : 'days'} ago`;
 };
 
-/** Maps a coin transaction reason snake_case key to a user-friendly label. */
+/** Maps a coin transaction reason key to a user-friendly display label. */
 export const formatCoinReason = (reason) => {
   const map = {
     community_report: 'Reported free spot',
@@ -142,7 +119,48 @@ export const formatCoinReason = (reason) => {
   return map[reason] || reason;
 };
 
-/** Alias for formatBookingDate for backwards compatibility. */
-export const formatDate = (d) => {
-  return formatBookingDate(d);
+/**
+ * Formats a countdown to a future start time.
+ * @param {Date|string|number} startDateTime - The booking start date/time.
+ * @returns {string} e.g. "Starts in 2 hrs 30 mins", "Starts in 45 mins", "Starting soon"
+ */
+export const formatCountdown = (startDateTime) => {
+  if (!startDateTime) return '';
+  const start = new Date(startDateTime);
+  const diffMs = start.getTime() - Date.now();
+  if (diffMs <= 0) return 'Started';
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 5) return 'Starting soon';
+  if (diffMin < 60) return `Starts in ${diffMin} mins`;
+  const hrs = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  if (mins === 0) return `Starts in ${hrs} ${hrs === 1 ? 'hr' : 'hrs'}`;
+  return `Starts in ${hrs} ${hrs === 1 ? 'hr' : 'hrs'} ${mins} mins`;
 };
+
+/**
+ * Returns a time-based greeting string.
+ * @returns {string} "Good morning", "Good afternoon", or "Good evening"
+ */
+export const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+};
+
+/**
+ * Calculates percentage change between two values.
+ * @param {number} current
+ * @param {number} previous
+ * @returns {string} e.g. "+12%" or "-5%" or "0%"
+ */
+export const percentageChange = (current, previous) => {
+  if (!previous || previous === 0) return current > 0 ? '+100%' : '0%';
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct > 0) return `+${pct}%`;
+  return `${pct}%`;
+};
+
+/** Alias for formatBookingDate for backwards compatibility. */
+export const formatDate = (d) => formatBookingDate(d);
