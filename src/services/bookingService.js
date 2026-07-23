@@ -1,9 +1,11 @@
 /**
  * @file bookingService.js
- * @description Firestore booking and order management services with mock fallback support.
+ * @description Firestore booking and order management services with real-time
+ *              subscriptions and mock fallback support.
  */
 
 import firestore from '@react-native-firebase/firestore';
+import { BOOKINGS } from '../utils/mockData';
 
 /** In-memory mock storage for orders and bookings during offline/mock operations. */
 const mockOrders = {};
@@ -18,6 +20,13 @@ const MOCK_LOT_DATA = {
   lot_005: { id: 'lot_005', name: 'Phoenix Market Lot C', latitude: 12.9960, longitude: 77.6960 },
 };
 
+/** Returns today's midnight as a Date object. */
+const todayMidnight = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
 /** Creates a pending order before payment processing. */
 export const createOrder = async (orderData) => {
   try {
@@ -29,12 +38,7 @@ export const createOrder = async (orderData) => {
     return docRef.id;
   } catch (error) {
     const mockId = `ord_mock_${Date.now()}`;
-    mockOrders[mockId] = {
-      ...orderData,
-      id: mockId,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
+    mockOrders[mockId] = { ...orderData, id: mockId, status: 'pending' };
     return mockId;
   }
 };
@@ -47,9 +51,7 @@ export const updateOrderStatus = async (orderId, status) => {
       updatedAt: firestore.FieldValue.serverTimestamp(),
     });
   } catch (error) {
-    if (mockOrders[orderId]) {
-      mockOrders[orderId].status = status;
-    }
+    if (mockOrders[orderId]) mockOrders[orderId].status = status;
   }
 };
 
@@ -64,12 +66,7 @@ export const createBooking = async (bookingData) => {
     return docRef.id;
   } catch (error) {
     const mockId = `bk_mock_${Date.now()}`;
-    mockBookings[mockId] = {
-      ...bookingData,
-      id: mockId,
-      status: 'confirmed',
-      createdAt: new Date().toISOString(),
-    };
+    mockBookings[mockId] = { ...bookingData, id: mockId, status: 'confirmed' };
     return mockId;
   }
 };
@@ -78,9 +75,7 @@ export const createBooking = async (bookingData) => {
 export const getBookingById = async (bookingId) => {
   try {
     const doc = await firestore().collection('bookings').doc(bookingId).get();
-    if (doc.exists) {
-      return { id: doc.id, ...doc.data() };
-    }
+    if (doc.exists) return { id: doc.id, ...doc.data() };
     return mockBookings[bookingId] || null;
   } catch (error) {
     return mockBookings[bookingId] || null;
@@ -88,13 +83,11 @@ export const getBookingById = async (bookingId) => {
 };
 
 /**
- * Fetches a booking and its associated lot details in a single call.
- * Returns a merged object containing booking fields plus lotLat and lotLng
- * needed for the QR ticket screen and navigation screen.
+ * Fetches a booking and joins its associated lot details (coordinates etc.).
+ * Returns a merged object needed for QR ticket and navigation.
  */
 export const getBookingWithLotDetails = async (bookingId) => {
   try {
-    // Step 1: fetch the booking document
     let booking = null;
     const bookingDoc = await firestore().collection('bookings').doc(bookingId).get();
     if (bookingDoc.exists) {
@@ -102,49 +95,118 @@ export const getBookingWithLotDetails = async (bookingId) => {
     } else {
       booking = mockBookings[bookingId] || null;
     }
-
     if (!booking) return null;
 
-    // Step 2: fetch the associated lot document
     let lot = MOCK_LOT_DATA[booking.lotId] || null;
     try {
       const lotDoc = await firestore().collection('lots').doc(booking.lotId).get();
-      if (lotDoc.exists) {
-        lot = { id: lotDoc.id, ...lotDoc.data() };
-      }
-    } catch (lotError) {
-      // Fall back to mock lot data
-    }
+      if (lotDoc.exists) lot = { id: lotDoc.id, ...lotDoc.data() };
+    } catch (_e) {}
 
-    // Step 3: merge booking with lot coordinates
     return {
       ...booking,
       lotLat: lot?.latitude ?? 12.9716,
       lotLng: lot?.longitude ?? 77.5946,
     };
   } catch (error) {
-    // Full offline fallback
     const booking = mockBookings[bookingId] || null;
     if (!booking) return null;
     const lot = MOCK_LOT_DATA[booking.lotId] || {};
-    return {
-      ...booking,
-      lotLat: lot.latitude ?? 12.9716,
-      lotLng: lot.longitude ?? 77.5946,
-    };
+    return { ...booking, lotLat: lot.latitude ?? 12.9716, lotLng: lot.longitude ?? 77.5946 };
   }
 };
 
-/** Fetches all bookings for a user. */
+/**
+ * Subscribes to real-time booking updates for a specific user.
+ * Ordered by createdAt descending. Returns unsubscribe function.
+ */
+export const subscribeUserBookings = (uid, callback) => {
+  try {
+    const unsubscribe = firestore()
+      .collection('bookings')
+      .where('userId', '==', uid)
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        (snapshot) => {
+          if (snapshot && !snapshot.empty) {
+            callback(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+          } else {
+            callback(Object.values(mockBookings).filter((b) => b.userId === uid));
+          }
+        },
+        (_err) => {
+          callback(Object.values(mockBookings).filter((b) => b.userId === uid));
+        }
+      );
+    return unsubscribe;
+  } catch (error) {
+    callback(Object.values(mockBookings).filter((b) => b.userId === uid));
+    return () => {};
+  }
+};
+
+/**
+ * Subscribes to real-time booking updates for a specific lot, today only.
+ * Returns unsubscribe function.
+ */
+export const subscribeLotBookingsToday = (lotId, callback) => {
+  try {
+    const midnight = todayMidnight();
+    const unsubscribe = firestore()
+      .collection('bookings')
+      .where('lotId', '==', lotId)
+      .where('createdAt', '>=', midnight)
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        (snapshot) => {
+          if (snapshot && !snapshot.empty) {
+            callback(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+          } else {
+            callback([]);
+          }
+        },
+        (_err) => {
+          callback([]);
+        }
+      );
+    return unsubscribe;
+  } catch (error) {
+    callback([]);
+    return () => {};
+  }
+};
+
+/**
+ * Fetches the most recent N bookings for a specific lot (one-shot).
+ * @param {string} lotId
+ * @param {number} limit - Number of bookings to fetch.
+ * @returns {Promise<Array>} Array of booking objects.
+ */
+export const getRecentLotBookings = async (lotId, limit = 5) => {
+  try {
+    const snapshot = await firestore()
+      .collection('bookings')
+      .where('lotId', '==', lotId)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    if (!snapshot.empty) {
+      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
+    return [];
+  } catch (error) {
+    return [];
+  }
+};
+
+/** Fetches all bookings for a user (one-shot, non-realtime). */
 export const getBookings = async (userId) => {
   try {
     const snapshot = await firestore()
       .collection('bookings')
       .where('userId', '==', userId)
       .get();
-    if (!snapshot.empty) {
-      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    }
+    if (!snapshot.empty) return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
     return Object.values(mockBookings).filter((b) => b.userId === userId);
   } catch (error) {
     return Object.values(mockBookings).filter((b) => b.userId === userId);
@@ -159,8 +221,6 @@ export const cancelBooking = async (bookingId) => {
       updatedAt: firestore.FieldValue.serverTimestamp(),
     });
   } catch (error) {
-    if (mockBookings[bookingId]) {
-      mockBookings[bookingId].status = 'cancelled';
-    }
+    if (mockBookings[bookingId]) mockBookings[bookingId].status = 'cancelled';
   }
 };
