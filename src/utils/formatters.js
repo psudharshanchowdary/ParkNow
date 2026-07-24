@@ -2,7 +2,7 @@
  * @file formatters.js
  * @description All display formatting utilities for distances, currency, dates,
  *              spot labels, booking IDs, time-ago, coin reasons, countdowns,
- *              greetings, and percentage changes.
+ *              greetings, percentage changes, end times, and scan errors.
  */
 
 import { COLORS } from '../theme/colors';
@@ -49,7 +49,6 @@ export const formatBookingDate = (dateObj) => {
     date.getDate() === today.getDate() &&
     date.getMonth() === today.getMonth() &&
     date.getFullYear() === today.getFullYear();
-
   const dayName = isToday
     ? 'Today'
     : date.toLocaleDateString('en-US', { weekday: 'short' });
@@ -160,6 +159,55 @@ export const percentageChange = (current, previous) => {
   const pct = Math.round(((current - previous) / previous) * 100);
   if (pct > 0) return `+${pct}%`;
   return `${pct}%`;
+};
+
+/**
+ * Formats the end time of a booking as "Until 2:30 PM".
+ * @param {number|string} startHour - Hour integer (0-23) or HH:MM string.
+ * @param {number} duration - Duration in hours.
+ * @returns {string} e.g. "Until 2:30 PM"
+ */
+export const formatEndTime = (startHour, duration) => {
+  try {
+    let startH = 9;
+    let startM = 0;
+    if (typeof startHour === 'number') {
+      startH = startHour;
+    } else if (typeof startHour === 'string' && startHour.includes(':')) {
+      const parts = startHour.split(':');
+      startH = parseInt(parts[0], 10);
+      startM = parseInt(parts[1], 10) || 0;
+    } else if (typeof startHour === 'string') {
+      startH = parseInt(startHour, 10) || 9;
+    }
+
+    const totalMinutes = startH * 60 + startM + Math.round((duration || 1) * 60);
+    const endH = Math.floor(totalMinutes / 60) % 24;
+    const endM = totalMinutes % 60;
+    const period = endH >= 12 ? 'PM' : 'AM';
+    const displayH = endH % 12 === 0 ? 12 : endH % 12;
+    const displayM = endM === 0 ? '' : `:${endM.toString().padStart(2, '0')}`;
+    return `Until ${displayH}${displayM} ${period}`;
+  } catch (_e) {
+    return 'Until —';
+  }
+};
+
+/**
+ * Maps a QR scan error code to a user-friendly message string.
+ * @param {string} errorCode
+ * @returns {string} User-facing error message
+ */
+export const formatScanError = (errorCode) => {
+  const map = {
+    invalid_qr: 'Invalid QR code. Please ask the driver to show a valid ParkNow ticket.',
+    already_used: 'This booking has already been checked in.',
+    expired: 'This booking has expired.',
+    wrong_lot: 'This ticket is for a different parking lot.',
+    cancelled: 'This booking was cancelled.',
+    not_found: 'Booking not found. Please check the ID.',
+  };
+  return map[errorCode] || 'Something went wrong. Please try again.';
 };
 
 /** Alias for formatBookingDate for backwards compatibility. */
