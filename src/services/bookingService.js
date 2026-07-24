@@ -1,7 +1,7 @@
 /**
  * @file bookingService.js
  * @description Firestore booking and order management services with real-time
- *              subscriptions and mock fallback support.
+ *              subscriptions, QR verification, and mock fallback support.
  */
 
 import firestore from '@react-native-firebase/firestore';
@@ -83,8 +83,8 @@ export const getBookingById = async (bookingId) => {
 };
 
 /**
- * Fetches a booking and joins its associated lot details (coordinates etc.).
- * Returns a merged object needed for QR ticket and navigation.
+ * Fetches a booking and joins its associated lot coordinates.
+ * Returns a merged object needed for QR ticket and navigation screens.
  */
 export const getBookingWithLotDetails = async (bookingId) => {
   try {
@@ -117,8 +117,97 @@ export const getBookingWithLotDetails = async (bookingId) => {
 };
 
 /**
+ * Verifies a booking for QR scan entry at a specific lot.
+ * Runs all 4 validation checks: exists, confirmed, correct lot, not expired.
+ * @param {string} bookingId - The booking document ID from the QR code.
+ * @param {string} adminLotId - The lot ID the admin manages.
+ * @returns {{ valid: boolean, booking: object|null, error: string|null }}
+ */
+export const verifyBookingQR = async (bookingId, adminLotId) => {
+  try {
+    const doc = await firestore().collection('bookings').doc(bookingId).get();
+
+    // 1. Check exists
+    if (!doc.exists) {
+      const mock = mockBookings[bookingId];
+      if (!mock) return { valid: false, booking: null, error: 'not_found' };
+    }
+
+    const booking = doc.exists ? { id: doc.id, ...doc.data() } : mockBookings[bookingId];
+
+    // 2. Check status
+    if (booking.status === 'cancelled') {
+      return { valid: false, booking, error: 'cancelled' };
+    }
+    if (booking.status === 'active' || booking.status === 'completed') {
+      return { valid: false, booking, error: 'already_used' };
+    }
+    if (booking.status !== 'confirmed') {
+      return { valid: false, booking, error: 'invalid_qr' };
+    }
+
+    // 3. Check correct lot
+    if (adminLotId && booking.lotId && booking.lotId !== adminLotId) {
+      return { valid: false, booking, error: 'wrong_lot' };
+    }
+
+    // 4. Check not expired
+    const startH = booking.startHour ?? 9;
+    const startMs = booking.date
+      ? new Date(booking.date).setHours(startH, 0, 0, 0)
+      : Date.now();
+    const endMs = startMs + (booking.duration || 1) * 3600 * 1000;
+    if (endMs < Date.now()) {
+      return { valid: false, booking, error: 'expired' };
+    }
+
+    return { valid: true, booking, error: null };
+  } catch (_e) {
+    return { valid: false, booking: null, error: 'invalid_qr' };
+  }
+};
+
+/**
+ * Marks a booking as active (driver has entered the lot) and updates the spot.
+ * @param {string} bookingId - The booking document ID.
+ * @param {string} spotId - The spot document ID to mark occupied.
+ * @param {string} lotId - The lot document ID.
+ */
+export const confirmBookingEntry = async (bookingId, spotId, lotId) => {
+  try {
+    const batch = firestore().batch();
+
+    const bookingRef = firestore().collection('bookings').doc(bookingId);
+    batch.update(bookingRef, {
+      status: 'active',
+      entryTime: firestore.FieldValue.serverTimestamp(),
+      updatedAt: firestore.FieldValue.serverTimestamp(),
+    });
+
+    if (spotId && lotId) {
+      const spotRef = firestore()
+        .collection('lots')
+        .doc(lotId)
+        .collection('spots')
+        .doc(spotId);
+      batch.update(spotRef, {
+        status: 'occupied',
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  } catch (_e) {
+    // Fallback for offline: update mock booking
+    if (mockBookings[bookingId]) {
+      mockBookings[bookingId].status = 'active';
+    }
+  }
+};
+
+/**
  * Subscribes to real-time booking updates for a specific user.
- * Ordered by createdAt descending. Returns unsubscribe function.
+ * Returns an unsubscribe function.
  */
 export const subscribeUserBookings = (uid, callback) => {
   try {
@@ -146,8 +235,8 @@ export const subscribeUserBookings = (uid, callback) => {
 };
 
 /**
- * Subscribes to real-time booking updates for a specific lot, today only.
- * Returns unsubscribe function.
+ * Subscribes to today's bookings for a specific lot.
+ * Returns an unsubscribe function.
  */
 export const subscribeLotBookingsToday = (lotId, callback) => {
   try {
@@ -165,9 +254,7 @@ export const subscribeLotBookingsToday = (lotId, callback) => {
             callback([]);
           }
         },
-        (_err) => {
-          callback([]);
-        }
+        (_err) => { callback([]); }
       );
     return unsubscribe;
   } catch (error) {
@@ -179,8 +266,8 @@ export const subscribeLotBookingsToday = (lotId, callback) => {
 /**
  * Fetches the most recent N bookings for a specific lot (one-shot).
  * @param {string} lotId
- * @param {number} limit - Number of bookings to fetch.
- * @returns {Promise<Array>} Array of booking objects.
+ * @param {number} limit
+ * @returns {Promise<Array>}
  */
 export const getRecentLotBookings = async (lotId, limit = 5) => {
   try {
@@ -190,16 +277,14 @@ export const getRecentLotBookings = async (lotId, limit = 5) => {
       .orderBy('createdAt', 'desc')
       .limit(limit)
       .get();
-    if (!snapshot.empty) {
-      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-    }
+    if (!snapshot.empty) return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
     return [];
   } catch (error) {
     return [];
   }
 };
 
-/** Fetches all bookings for a user (one-shot, non-realtime). */
+/** Fetches all bookings for a user (one-shot). */
 export const getBookings = async (userId) => {
   try {
     const snapshot = await firestore()
