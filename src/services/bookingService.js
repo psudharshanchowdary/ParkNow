@@ -1,13 +1,12 @@
 /**
  * @file bookingService.js
  * @description Firestore booking and order management services with real-time
- *              subscriptions, QR verification, and mock fallback support.
+ *              subscriptions, QR verification, period revenue queries, and mock fallback.
  */
 
 import firestore from '@react-native-firebase/firestore';
-import { BOOKINGS } from '../utils/mockData';
 
-/** In-memory mock storage for orders and bookings during offline/mock operations. */
+/** In-memory mock storage for offline/mock operations. */
 const mockOrders = {};
 const mockBookings = {};
 
@@ -43,7 +42,7 @@ export const createOrder = async (orderData) => {
   }
 };
 
-/** Updates the status of an order (e.g. 'completed' or 'failed'). */
+/** Updates the status of an order. */
 export const updateOrderStatus = async (orderId, status) => {
   try {
     await firestore().collection('orders').doc(orderId).update({
@@ -82,10 +81,7 @@ export const getBookingById = async (bookingId) => {
   }
 };
 
-/**
- * Fetches a booking and joins its associated lot coordinates.
- * Returns a merged object needed for QR ticket and navigation screens.
- */
+/** Fetches a booking and joins lot coordinates. */
 export const getBookingWithLotDetails = async (bookingId) => {
   try {
     let booking = null;
@@ -118,48 +114,34 @@ export const getBookingWithLotDetails = async (bookingId) => {
 
 /**
  * Verifies a booking for QR scan entry at a specific lot.
- * Runs all 4 validation checks: exists, confirmed, correct lot, not expired.
- * @param {string} bookingId - The booking document ID from the QR code.
- * @param {string} adminLotId - The lot ID the admin manages.
+ * @param {string} bookingId
+ * @param {string} adminLotId
  * @returns {{ valid: boolean, booking: object|null, error: string|null }}
  */
 export const verifyBookingQR = async (bookingId, adminLotId) => {
   try {
     const doc = await firestore().collection('bookings').doc(bookingId).get();
-
-    // 1. Check exists
     if (!doc.exists) {
       const mock = mockBookings[bookingId];
       if (!mock) return { valid: false, booking: null, error: 'not_found' };
     }
-
     const booking = doc.exists ? { id: doc.id, ...doc.data() } : mockBookings[bookingId];
 
-    // 2. Check status
-    if (booking.status === 'cancelled') {
-      return { valid: false, booking, error: 'cancelled' };
-    }
+    if (booking.status === 'cancelled') return { valid: false, booking, error: 'cancelled' };
     if (booking.status === 'active' || booking.status === 'completed') {
       return { valid: false, booking, error: 'already_used' };
     }
-    if (booking.status !== 'confirmed') {
-      return { valid: false, booking, error: 'invalid_qr' };
-    }
-
-    // 3. Check correct lot
+    if (booking.status !== 'confirmed') return { valid: false, booking, error: 'invalid_qr' };
     if (adminLotId && booking.lotId && booking.lotId !== adminLotId) {
       return { valid: false, booking, error: 'wrong_lot' };
     }
 
-    // 4. Check not expired
     const startH = booking.startHour ?? 9;
     const startMs = booking.date
       ? new Date(booking.date).setHours(startH, 0, 0, 0)
       : Date.now();
     const endMs = startMs + (booking.duration || 1) * 3600 * 1000;
-    if (endMs < Date.now()) {
-      return { valid: false, booking, error: 'expired' };
-    }
+    if (endMs < Date.now()) return { valid: false, booking, error: 'expired' };
 
     return { valid: true, booking, error: null };
   } catch (_e) {
@@ -168,47 +150,97 @@ export const verifyBookingQR = async (bookingId, adminLotId) => {
 };
 
 /**
- * Marks a booking as active (driver has entered the lot) and updates the spot.
- * @param {string} bookingId - The booking document ID.
- * @param {string} spotId - The spot document ID to mark occupied.
- * @param {string} lotId - The lot document ID.
+ * Marks a booking as active and updates the spot to occupied.
+ * @param {string} bookingId
+ * @param {string} spotId
+ * @param {string} lotId
  */
 export const confirmBookingEntry = async (bookingId, spotId, lotId) => {
   try {
     const batch = firestore().batch();
-
-    const bookingRef = firestore().collection('bookings').doc(bookingId);
-    batch.update(bookingRef, {
+    batch.update(firestore().collection('bookings').doc(bookingId), {
       status: 'active',
       entryTime: firestore.FieldValue.serverTimestamp(),
       updatedAt: firestore.FieldValue.serverTimestamp(),
     });
-
     if (spotId && lotId) {
-      const spotRef = firestore()
-        .collection('lots')
-        .doc(lotId)
-        .collection('spots')
-        .doc(spotId);
-      batch.update(spotRef, {
-        status: 'occupied',
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      });
+      batch.update(
+        firestore().collection('lots').doc(lotId).collection('spots').doc(spotId),
+        { status: 'occupied', updatedAt: firestore.FieldValue.serverTimestamp() }
+      );
     }
-
     await batch.commit();
   } catch (_e) {
-    // Fallback for offline: update mock booking
-    if (mockBookings[bookingId]) {
-      mockBookings[bookingId].status = 'active';
-    }
+    if (mockBookings[bookingId]) mockBookings[bookingId].status = 'active';
   }
 };
 
 /**
- * Subscribes to real-time booking updates for a specific user.
- * Returns an unsubscribe function.
+ * Fetches all bookings for a lot within a date range.
+ * @param {string} lotId
+ * @param {Date} startDate
+ * @param {Date} endDate
+ * @returns {Promise<Array>}
  */
+export const getBookingsByPeriod = async (lotId, startDate, endDate) => {
+  try {
+    const snap = await firestore()
+      .collection('bookings')
+      .where('lotId', '==', lotId)
+      .where('createdAt', '>=', startDate)
+      .where('createdAt', '<=', endDate)
+      .orderBy('createdAt', 'desc')
+      .get();
+    if (!snap.empty) return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return [];
+  } catch (_e) {
+    return [];
+  }
+};
+
+/**
+ * Returns aggregated revenue metrics for a lot within a date range.
+ * @param {string} lotId
+ * @param {Date} startDate
+ * @param {Date} endDate
+ * @returns {Promise<{ total: number, bookingsCount: number, byDay: Array, byHour: Array }>}
+ */
+export const getRevenueForPeriod = async (lotId, startDate, endDate) => {
+  try {
+    const bookings = await getBookingsByPeriod(lotId, startDate, endDate);
+    const total = bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+    const bookingsCount = bookings.length;
+
+    // Group by day of week
+    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayMap = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
+    const hourMap = {};
+    for (let h = 8; h <= 22; h++) hourMap[h] = 0;
+
+    bookings.forEach((b) => {
+      try {
+        const ts = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || Date.now());
+        const day = dayLabels[ts.getDay()];
+        dayMap[day] = (dayMap[day] || 0) + (b.totalAmount || 0);
+        const hr = ts.getHours();
+        if (hr >= 8 && hr <= 22) hourMap[hr] = (hourMap[hr] || 0) + (b.totalAmount || 0);
+      } catch (_e) {}
+    });
+
+    const byDay = dayLabels.map((label) => ({ label, revenue: dayMap[label] || 0 }));
+    const byHour = Object.keys(hourMap).map((h) => ({
+      label: `${parseInt(h, 10) > 12 ? parseInt(h, 10) - 12 : h}${parseInt(h, 10) >= 12 ? 'PM' : 'AM'}`,
+      revenue: hourMap[h],
+      hour: parseInt(h, 10),
+    }));
+
+    return { total, bookingsCount, byDay, byHour, bookings };
+  } catch (_e) {
+    return { total: 0, bookingsCount: 0, byDay: [], byHour: [], bookings: [] };
+  }
+};
+
+/** Subscribes to real-time booking updates for a specific user. */
 export const subscribeUserBookings = (uid, callback) => {
   try {
     const unsubscribe = firestore()
@@ -234,10 +266,7 @@ export const subscribeUserBookings = (uid, callback) => {
   }
 };
 
-/**
- * Subscribes to today's bookings for a specific lot.
- * Returns an unsubscribe function.
- */
+/** Subscribes to today's bookings for a specific lot. */
 export const subscribeLotBookingsToday = (lotId, callback) => {
   try {
     const midnight = todayMidnight();
@@ -264,7 +293,7 @@ export const subscribeLotBookingsToday = (lotId, callback) => {
 };
 
 /**
- * Fetches the most recent N bookings for a specific lot (one-shot).
+ * Fetches the most recent N bookings for a lot.
  * @param {string} lotId
  * @param {number} limit
  * @returns {Promise<Array>}
