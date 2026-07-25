@@ -1,8 +1,6 @@
 /**
  * @file formatters.js
- * @description All display formatting utilities for distances, currency, dates,
- *              spot labels, booking IDs, time-ago, coin reasons, countdowns,
- *              greetings, percentage changes, end times, and scan errors.
+ * @description All display formatting utilities for ParkNow.
  */
 
 import { COLORS } from '../theme/colors';
@@ -84,7 +82,6 @@ export const shortBookingId = (bookingId) => {
 
 /**
  * Formats a Firestore timestamp, Date, or ms value into a "time ago" string.
- * Examples: "Just now", "3 min ago", "2 hrs ago", "4 days ago".
  */
 export const formatTimeAgo = (timestamp) => {
   if (!timestamp) return '';
@@ -120,8 +117,8 @@ export const formatCoinReason = (reason) => {
 
 /**
  * Formats a countdown to a future start time.
- * @param {Date|string|number} startDateTime - The booking start date/time.
- * @returns {string} e.g. "Starts in 2 hrs 30 mins", "Starts in 45 mins", "Starting soon"
+ * @param {Date|string|number} startDateTime
+ * @returns {string}
  */
 export const formatCountdown = (startDateTime) => {
   if (!startDateTime) return '';
@@ -139,7 +136,7 @@ export const formatCountdown = (startDateTime) => {
 
 /**
  * Returns a time-based greeting string.
- * @returns {string} "Good morning", "Good afternoon", or "Good evening"
+ * @returns {string}
  */
 export const getGreeting = () => {
   const hour = new Date().getHours();
@@ -152,7 +149,7 @@ export const getGreeting = () => {
  * Calculates percentage change between two values.
  * @param {number} current
  * @param {number} previous
- * @returns {string} e.g. "+12%" or "-5%" or "0%"
+ * @returns {string}
  */
 export const percentageChange = (current, previous) => {
   if (!previous || previous === 0) return current > 0 ? '+100%' : '0%';
@@ -163,9 +160,9 @@ export const percentageChange = (current, previous) => {
 
 /**
  * Formats the end time of a booking as "Until 2:30 PM".
- * @param {number|string} startHour - Hour integer (0-23) or HH:MM string.
- * @param {number} duration - Duration in hours.
- * @returns {string} e.g. "Until 2:30 PM"
+ * @param {number|string} startHour
+ * @param {number} duration
+ * @returns {string}
  */
 export const formatEndTime = (startHour, duration) => {
   try {
@@ -180,7 +177,6 @@ export const formatEndTime = (startHour, duration) => {
     } else if (typeof startHour === 'string') {
       startH = parseInt(startHour, 10) || 9;
     }
-
     const totalMinutes = startH * 60 + startM + Math.round((duration || 1) * 60);
     const endH = Math.floor(totalMinutes / 60) % 24;
     const endM = totalMinutes % 60;
@@ -196,7 +192,7 @@ export const formatEndTime = (startHour, duration) => {
 /**
  * Maps a QR scan error code to a user-friendly message string.
  * @param {string} errorCode
- * @returns {string} User-facing error message
+ * @returns {string}
  */
 export const formatScanError = (errorCode) => {
   const map = {
@@ -209,6 +205,62 @@ export const formatScanError = (errorCode) => {
   };
   return map[errorCode] || 'Something went wrong. Please try again.';
 };
+
+/**
+ * Formats a revenue amount for compact chart axis labels.
+ * @param {number} amount
+ * @returns {string} e.g. "₹2k" or "₹450"
+ */
+export const formatChartRevenue = (amount) => {
+  if (!amount || amount === 0) return '₹0';
+  if (amount >= 1000) return `₹${(amount / 1000).toFixed(amount % 1000 === 0 ? 0 : 1)}k`;
+  return `₹${Math.round(amount)}`;
+};
+
+/**
+ * Groups an array of bookings by day-of-week label.
+ * @param {Array} bookings - Array of booking objects with createdAt field.
+ * @returns {Object} e.g. { Mon: 1200, Tue: 800, Wed: 0, ... }
+ */
+export const groupBookingsByDay = (bookings) => {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const result = { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 };
+  (bookings || []).forEach((b) => {
+    try {
+      const ts = b.createdAt?.toDate
+        ? b.createdAt.toDate()
+        : new Date(b.createdAt || Date.now());
+      const day = days[ts.getDay()];
+      result[day] = (result[day] || 0) + (b.totalAmount || 0);
+    } catch (_e) {}
+  });
+  return result;
+};
+
+/**
+ * Converts a 24-hour time string to 12-hour display format.
+ * @param {string} timeString - e.g. "14:30"
+ * @returns {string} e.g. "2:30 PM"
+ */
+export const format24to12 = (timeString) => {
+  if (!timeString || !timeString.includes(':')) return timeString || '';
+  const [hStr, mStr] = timeString.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const displayH = h % 12 === 0 ? 12 : h % 12;
+  const displayM = m === 0 ? '' : `:${m.toString().padStart(2, '0')}`;
+  return `${displayH}${displayM} ${period}`;
+};
+
+/**
+ * Clamps a numeric value between a minimum and maximum.
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+export const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 /** Alias for formatBookingDate for backwards compatibility. */
 export const formatDate = (d) => formatBookingDate(d);
