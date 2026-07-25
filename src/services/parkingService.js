@@ -1,7 +1,7 @@
 /**
  * @file parkingService.js
  * @description Real-time parking lot and spot management services,
- *              including spot status updates and availability management.
+ *              including spot status updates, lot settings, and lot deletion.
  */
 
 import firestore from '@react-native-firebase/firestore';
@@ -15,8 +15,7 @@ export const subscribeToLots = (callback) => {
       .onSnapshot(
         (snapshot) => {
           if (snapshot && !snapshot.empty) {
-            const lots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            callback(lots);
+            callback(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
           } else {
             callback(LOTS);
           }
@@ -69,7 +68,6 @@ export const subscribeLotDetail = (lotId, callback) => {
 
 /**
  * Subscribes to real-time spot updates for a lot's spots subcollection.
- * Falls back to mock data if Firestore is unavailable.
  */
 export const subscribeToSpots = (lotId, callback) => {
   try {
@@ -80,8 +78,7 @@ export const subscribeToSpots = (lotId, callback) => {
       .onSnapshot(
         (snapshot) => {
           if (snapshot && !snapshot.empty) {
-            const spots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            callback(spots);
+            callback(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
           } else {
             callback(MOCK_SPOTS[lotId] || []);
           }
@@ -96,9 +93,9 @@ export const subscribeToSpots = (lotId, callback) => {
 
 /**
  * Updates the status of a single spot in Firestore.
- * @param {string} lotId - The parking lot document ID.
- * @param {string} spotId - The spot document ID within the lot's spots subcollection.
- * @param {string} status - New status: 'available' | 'occupied' | 'reserved'.
+ * @param {string} lotId
+ * @param {string} spotId
+ * @param {string} status - 'available' | 'occupied' | 'reserved'
  */
 export const updateSpotStatus = async (lotId, spotId, status) => {
   try {
@@ -107,22 +104,85 @@ export const updateSpotStatus = async (lotId, spotId, status) => {
       .doc(lotId)
       .collection('spots')
       .doc(spotId)
-      .update({
-        status,
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      });
+      .update({ status, updatedAt: firestore.FieldValue.serverTimestamp() });
+  } catch (_e) {}
+};
+
+/**
+ * Marks a specific spot as available.
+ * @param {string} lotId
+ * @param {string} spotId
+ */
+export const markSpotAvailable = async (lotId, spotId) =>
+  updateSpotStatus(lotId, spotId, 'available');
+
+/**
+ * Updates lot settings fields in Firestore.
+ * @param {string} lotId
+ * @param {Object} settings - Partial settings to merge into the lot document.
+ */
+export const updateLotSettings = async (lotId, settings) => {
+  try {
+    await firestore()
+      .collection('lots')
+      .doc(lotId)
+      .update({ ...settings, updatedAt: firestore.FieldValue.serverTimestamp() });
   } catch (error) {
-    // Silently handle offline scenario — spot update will retry when connected
+    throw error;
   }
 };
 
 /**
- * Marks a specific spot as available (convenience wrapper).
+ * Updates the open/closed status of a lot.
  * @param {string} lotId
- * @param {string} spotId
+ * @param {boolean} isOpen
  */
-export const markSpotAvailable = async (lotId, spotId) => {
-  return updateSpotStatus(lotId, spotId, 'available');
+export const updateLotStatus = async (lotId, isOpen) => {
+  try {
+    await firestore()
+      .collection('lots')
+      .doc(lotId)
+      .update({ isOpen, updatedAt: firestore.FieldValue.serverTimestamp() });
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Deletes a lot and all its spots subcollection documents.
+ * Also clears the lotId from the admin user's document.
+ * @param {string} lotId
+ * @param {string} adminUid - The admin user's UID to clear lotId from.
+ */
+export const deleteLot = async (lotId, adminUid) => {
+  try {
+    // Delete all spots in subcollection
+    const spotsSnap = await firestore()
+      .collection('lots')
+      .doc(lotId)
+      .collection('spots')
+      .get();
+
+    if (!spotsSnap.empty) {
+      const batch = firestore().batch();
+      spotsSnap.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+
+    // Delete the lot document itself
+    await firestore().collection('lots').doc(lotId).delete();
+
+    // Clear lotId from admin user document
+    if (adminUid) {
+      await firestore().collection('users').doc(adminUid).update({
+        lotId: null,
+        lotName: null,
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    throw error;
+  }
 };
 
 /** Toggles favorite status for a parking lot. */
@@ -161,7 +221,7 @@ export const isFavorited = async (uid, lotId) => {
   }
 };
 
-/** Fetches all lots (one-shot, non-realtime). */
+/** Fetches all lots (one-shot). */
 export const getLots = async () => {
   try {
     const snapshot = await firestore().collection('lots').get();
@@ -177,11 +237,6 @@ export const subscribeToLot = (lotId, callback) => subscribeLotDetail(lotId, cal
 
 /**
  * Filters parking lots within a maximum radius using the Haversine formula.
- * @param {Array} lots
- * @param {number} userLat
- * @param {number} userLng
- * @param {number} maxRadiusKm
- * @returns {Array} Filtered lots sorted by proximity
  */
 export const filterLotsByDistance = (lots = [], userLat, userLng, maxRadiusKm = 5) => {
   const toRad = (value) => (value * Math.PI) / 180;
