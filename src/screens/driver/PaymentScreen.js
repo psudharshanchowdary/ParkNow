@@ -1,4 +1,4 @@
-// Built Day 12
+// Built Day 12 — Updated Day 18 (notification wiring)
 /**
  * @file PaymentScreen.js
  * @description Payment gateway integration screen with ParkCoins discount, Razorpay checkout, and booking confirmation.
@@ -21,6 +21,7 @@ import { COLORS } from '../../theme/colors';
 import * as authService from '../../services/authService';
 import * as bookingService from '../../services/bookingService';
 import * as coinsService from '../../services/coinsService';
+import { scheduleBookingReminder } from '../../services/notificationService';
 import { formatBookingDate } from '../../utils/formatters';
 
 let RazorpayCheckout = null;
@@ -146,6 +147,17 @@ const PaymentScreen = ({ route, navigation }) => {
           await coinsService.deductCoins(uid, coinsUsed);
         }
         await coinsService.addCoins(uid, 5, 'Booking Reward');
+
+        // Schedule 30-min reminder notification for this booking
+        scheduleBookingReminder({
+          id: bookingId,
+          date: formattedDateStr,
+          startHour: startTime,
+          spotLabel,
+          lotName,
+        }).catch(() => {});
+        // TODO: Send 'coins_earned' push notification via Cloud Function
+        // when 5 bonus ParkCoins are added to avoid double-send race conditions.
 
         // Mark order as completed
         if (orderId) {
