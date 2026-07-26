@@ -201,6 +201,9 @@ const CommunityReportScreen = ({ navigation }) => {
       });
 
       await coinsService.addCoins(uid, 10, 'community_report');
+      // TODO: Trigger 'spot_available' push notification for nearby drivers via a
+      // Firebase Cloud Function (Firestore onCreate trigger on communityReports).
+      // Do NOT send from the client — the server must query nearby users server-side.
 
       const newBalance = await coinsService.getCoinBalance(uid);
       triggerSuccessAnimation(newBalance - 10);
