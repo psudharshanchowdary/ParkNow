@@ -1,10 +1,10 @@
-// Built Day 9
+// Polished Day 19
 /**
  * @file LoginScreen.js
  * @description Driver authentication screen featuring Phone OTP login with Firebase.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
   Platform,
   SafeAreaView,
   StatusBar,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import * as authService from '../../services/authService';
@@ -32,6 +34,20 @@ const LoginScreen = ({ navigation }) => {
 
   const otpRefs = useRef([]);
 
+  // --- Day 19 Animation refs ---
+  /** Animated.Value for logo stagger entry (opacity + translateY). */
+  const logoAnim = useRef(new Animated.Value(0)).current;
+  /** Animated.Value for title stagger entry. */
+  const titleAnim = useRef(new Animated.Value(0)).current;
+  /** Animated.Value for subtitle stagger entry. */
+  const subtitleAnim = useRef(new Animated.Value(0)).current;
+  /** Animated.Value for form stagger entry. */
+  const formAnim = useRef(new Animated.Value(0)).current;
+  /** Animated.Value for OTP shake X offset. */
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  /** Animated.Value for Send OTP button scale. */
+  const btnScaleAnim = useRef(new Animated.Value(1)).current;
+
   // Handle OTP countdown timer ticks
   useEffect(() => {
     let interval;
@@ -45,6 +61,38 @@ const LoginScreen = ({ navigation }) => {
     return () => clearInterval(interval);
   }, [confirmResult, timer]);
 
+  /**
+   * Runs staggered mount animation for all hero elements.
+   * Each element fades in and slides up from translateY:30 → 0.
+   */
+  useEffect(() => {
+    const anims = [logoAnim, titleAnim, subtitleAnim, formAnim];
+    anims.forEach((a) => a.setValue(0));
+    const stagger = Animated.stagger(
+      80,
+      anims.map((a) =>
+        Animated.parallel([
+          Animated.timing(a, { toValue: 1, duration: 400, useNativeDriver: true }),
+        ])
+      )
+    );
+    stagger.start();
+    return () => stagger.stop();
+  }, [logoAnim, titleAnim, subtitleAnim, formAnim]);
+
+  /**
+   * Runs OTP shake animation to signal incorrect code entry.
+   */
+  const triggerOtpShake = useCallback(() => {
+    const shake = Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]);
+    shake.start();
+  }, [shakeAnim]);
+
   /** Translates Firebase auth errors into user-friendly messages. */
   const handleAuthError = (err) => {
     const errCode = err.code || '';
@@ -55,6 +103,7 @@ const LoginScreen = ({ navigation }) => {
       setError('OTP session has expired. Please request a new OTP.');
     } else if (errCode.includes('auth/invalid-verification-code') || errMsg.includes('invalid-verification-code')) {
       setError('Incorrect OTP. Please enter the correct 6-digit code.');
+      triggerOtpShake();
     } else if (errCode.includes('auth/network-request-failed')) {
       setError('Network connection failed. Please check your internet connection.');
     } else if (errCode.includes('auth/too-many-requests')) {
@@ -63,6 +112,16 @@ const LoginScreen = ({ navigation }) => {
       setError('Authentication failed. Please verify your connection and try again.');
     }
   };
+
+  /** Scales Send OTP button down on press-in. */
+  const handleBtnPressIn = useCallback(() => {
+    Animated.spring(btnScaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
+  }, [btnScaleAnim]);
+
+  /** Scales Send OTP button back to 1.0 on press-out. */
+  const handleBtnPressOut = useCallback(() => {
+    Animated.spring(btnScaleAnim, { toValue: 1.0, useNativeDriver: true }).start();
+  }, [btnScaleAnim]);
 
   /** Initiates Phone Authentication and sends OTP. */
   const handleSendOTP = async () => {
@@ -141,6 +200,14 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
+  /** Interpolates opacity from anim value (0→1). */
+  const makeOpacity = useCallback((anim) => anim, []);
+  /** Interpolates translateY: anim 0→1 maps to 30→0. */
+  const makeTranslateY = useCallback(
+    (anim) => anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }),
+    []
+  );
+
   return (
     <SafeAreaView style={styles.safeContainer}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
@@ -150,15 +217,61 @@ const LoginScreen = ({ navigation }) => {
       >
         <View style={styles.container}>
           {/* Header & Logo */}
-          <View style={styles.headerContainer}>
-            <View style={styles.logoCircle}>
-              <Text style={styles.logoText}>P</Text>
-            </View>
-            <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>Sign in to find parking near you</Text>
-          </View>
+          <Animated.View
+            style={[
+              styles.headerContainer,
+              {
+                opacity: logoAnim,
+                transform: [{ translateY: makeTranslateY(logoAnim) }],
+              },
+            ]}
+          >
+            <Animated.View
+              style={[
+                styles.logoCircleWrap,
+                {
+                  opacity: logoAnim,
+                  transform: [{ translateY: makeTranslateY(logoAnim) }],
+                },
+              ]}
+            >
+              <View style={styles.logoCircle}>
+                <Text style={styles.logoText}>P</Text>
+              </View>
+            </Animated.View>
+            <Animated.Text
+              style={[
+                styles.title,
+                {
+                  opacity: titleAnim,
+                  transform: [{ translateY: makeTranslateY(titleAnim) }],
+                },
+              ]}
+            >
+              Welcome back
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                styles.subtitle,
+                {
+                  opacity: subtitleAnim,
+                  transform: [{ translateY: makeTranslateY(subtitleAnim) }],
+                },
+              ]}
+            >
+              Sign in to find parking near you
+            </Animated.Text>
+          </Animated.View>
 
           {/* Form */}
+          <Animated.View
+            style={[
+              {
+                opacity: formAnim,
+                transform: [{ translateY: makeTranslateY(formAnim) }],
+              },
+            ]}
+          >
           {!confirmResult ? (
             <View style={styles.formContainer}>
               <View style={styles.inputLabelContainer}>
@@ -182,23 +295,32 @@ const LoginScreen = ({ navigation }) => {
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-              <TouchableOpacity
-                style={[
-                  styles.button,
-                  phoneNumber.length !== 10 || loading ? styles.buttonDisabled : null,
-                ]}
-                onPress={handleSendOTP}
-                disabled={phoneNumber.length !== 10 || loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.buttonText}>Send OTP</Text>
-                )}
-              </TouchableOpacity>
+              <Animated.View style={{ transform: [{ scale: btnScaleAnim }] }}>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    phoneNumber.length !== 10 || loading ? styles.buttonDisabled : null,
+                  ]}
+                  onPress={handleSendOTP}
+                  onPressIn={handleBtnPressIn}
+                  onPressOut={handleBtnPressOut}
+                  disabled={phoneNumber.length !== 10 || loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.buttonText}>Send OTP</Text>
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
             </View>
           ) : (
-            <View style={styles.formContainer}>
+            <Animated.View
+              style={[
+                styles.formContainer,
+                { transform: [{ translateX: shakeAnim }] },
+              ]}
+            >
               <View style={styles.inputLabelContainer}>
                 <Text style={styles.inputLabel}>Enter 6-Digit OTP</Text>
               </View>
@@ -245,8 +367,9 @@ const LoginScreen = ({ navigation }) => {
                   <Text style={styles.resendTimer}>Resend OTP in {timer}s</Text>
                 )}
               </View>
-            </View>
+            </Animated.View>
           )}
+          </Animated.View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -269,6 +392,9 @@ const styles = StyleSheet.create({
   headerContainer: {
     alignItems: 'center',
     marginBottom: 32,
+  },
+  logoCircleWrap: {
+    marginBottom: 0,
   },
   logoCircle: {
     width: 40,
