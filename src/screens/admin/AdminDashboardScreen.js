@@ -1,4 +1,5 @@
 // Built Day 15
+// Polished Day 19
 /**
  * @file AdminDashboardScreen.js
  * @description Admin dashboard showing real-time occupancy, revenue,
@@ -44,30 +45,49 @@ const AdminDashboardScreen = ({ navigation }) => {
   const [bannerBooking, setBannerBooking] = useState(null);
   const [noLotAssigned, setNoLotAssigned] = useState(false);
 
-  // ── Animation refs ────────────────────────────────────────────────────────────
+  // ── Animation refs ──────────────────────────────────────────────────
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseScaleAnim = useRef(new Animated.Value(1)).current;
   const bannerY = useRef(new Animated.Value(-60)).current;
   const pulseLoop = useRef(null);
   const bannerTimer = useRef(null);
 
-  /** Starts the infinite opacity pulse on the "Live" indicator. */
+  // Day 19: metric card stagger refs
+  const cardScale = useRef(Array.from({ length: 4 }, () => new Animated.Value(0.85))).current;
+  const cardOpacity = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
+
+  /** Starts the infinite opacity+scale pulse on the "Live" indicator. */
   const startPulse = useCallback(() => {
     pulseLoop.current = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 0.3,
-          duration: 750,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 750,
-          useNativeDriver: true,
-        }),
+        Animated.parallel([
+          Animated.timing(pulseAnim, {
+            toValue: 0.3,
+            duration: 750,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseScaleAnim, {
+            toValue: 1.3,
+            duration: 750,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 750,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseScaleAnim, {
+            toValue: 1.0,
+            duration: 750,
+            useNativeDriver: true,
+          }),
+        ]),
       ])
     );
     pulseLoop.current.start();
-  }, [pulseAnim]);
+  }, [pulseAnim, pulseScaleAnim]);
 
   /** Slides the banner in then auto-dismisses after 3 seconds. */
   const showBanner = useCallback((booking) => {
@@ -91,11 +111,25 @@ const AdminDashboardScreen = ({ navigation }) => {
   // Start pulse on mount, stop on unmount
   useEffect(() => {
     startPulse();
+    // Day 19: stagger metric cards on mount
+    Animated.stagger(
+      100,
+      cardScale.map((s, i) =>
+        Animated.parallel([
+          Animated.spring(s, { toValue: 1.0, useNativeDriver: true, friction: 8 }),
+          Animated.timing(cardOpacity[i], { toValue: 1, duration: 300, useNativeDriver: true }),
+        ])
+      )
+    ).start();
     return () => {
       if (pulseLoop.current) pulseLoop.current.stop();
       if (bannerTimer.current) clearTimeout(bannerTimer.current);
+      pulseAnim.stopAnimation();
+      pulseScaleAnim.stopAnimation();
+      cardScale.forEach((s) => s.stopAnimation());
+      cardOpacity.forEach((o) => o.stopAnimation());
     };
-  }, [startPulse]);
+  }, [startPulse, cardScale, cardOpacity, pulseAnim, pulseScaleAnim]);
 
   // Fetch admin's lot from Firestore user document
   useEffect(() => {
@@ -108,7 +142,6 @@ const AdminDashboardScreen = ({ navigation }) => {
           setLotId(doc.data().lotId);
           setLotName(doc.data().lotName || 'My Lot');
         } else {
-          // Mock fallback for dev — use lot_001
           setLotId('lot_001');
           setLotName('City Centre Mall');
         }
@@ -235,7 +268,6 @@ const AdminDashboardScreen = ({ navigation }) => {
   const revChange = percentageChange(metrics.todayRevenue, yesterdayRevenue);
   const revIsPositive = revChange.startsWith('+');
 
-  /** Renders a pure-RN occupancy ring using rotated half-circle views. */
   const renderRing = useCallback((pct) => {
     const filled = Math.min(Math.max(pct, 0), 100);
     const leftDeg = Math.min(filled * 3.6, 180);
@@ -263,7 +295,6 @@ const AdminDashboardScreen = ({ navigation }) => {
     );
   }, []);
 
-  /** Returns 2-character initials from a driver name. */
   const getInitials = (name) => {
     if (!name) return '??';
     const parts = name.trim().split(' ');
@@ -287,7 +318,6 @@ const AdminDashboardScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeContainer}>
-      {/* ── Live update banner ───────────────────────────────── */}
       {bannerBooking && (
         <Animated.View style={[styles.liveBanner, { transform: [{ translateY: bannerY }] }]}>
           <Icon name="checkmark-circle" size={16} color={COLORS.available} />
@@ -298,7 +328,6 @@ const AdminDashboardScreen = ({ navigation }) => {
       )}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* ── Header ──────────────────────────────────────────── */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Dashboard</Text>
           <TouchableOpacity
@@ -314,16 +343,16 @@ const AdminDashboardScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* ── Greeting card ───────────────────────────────────── */}
         <View style={styles.greetingCard}>
           <Text style={styles.greetingLine}>{getGreeting()},</Text>
           <Text style={styles.greetingName}>{adminName} 👋</Text>
           <Text style={styles.greetingLot}>{lotName}</Text>
         </View>
 
-        {/* ── 2×2 Metrics grid ────────────────────────────────── */}
         <View style={styles.metricsGrid}>
-          <View style={styles.metricCard}>
+          <Animated.View
+            style={[styles.metricCard, { opacity: cardOpacity[0], transform: [{ scale: cardScale[0] }] }]}
+          >
             <Text style={styles.metricLabel}>Today's revenue</Text>
             <Text style={styles.metricValue}>₹{metrics.todayRevenue.toLocaleString('en-IN')}</Text>
             <View style={styles.metricChangeRow}>
@@ -336,30 +365,29 @@ const AdminDashboardScreen = ({ navigation }) => {
                 {' '}{revChange} vs yesterday
               </Text>
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={[styles.metricCard, styles.metricCardCenter]}>
+          <Animated.View
+            style={[styles.metricCard, styles.metricCardCenter, { opacity: cardOpacity[1], transform: [{ scale: cardScale[1] }] }]}
+          >
             <Text style={styles.metricLabel}>Occupancy</Text>
             {renderRing(metrics.occupancyPct)}
             <Text style={styles.metricLabelSmall}>of spots taken</Text>
-          </View>
+          </Animated.View>
 
-          <View style={styles.metricCard}>
+          <Animated.View
+            style={[styles.metricCard, { opacity: cardOpacity[2], transform: [{ scale: cardScale[2] }] }]}
+          >
             <Text style={styles.metricLabel}>Active now</Text>
             <Text style={[styles.metricValue, styles.metricGold]}>{metrics.activeNow}</Text>
             <Text style={styles.metricLabelSmall}>bookings</Text>
             <View style={styles.liveRow}>
-              <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
+              <Animated.View
+                style={[styles.liveDot, { opacity: pulseAnim, transform: [{ scale: pulseScaleAnim }] }]}
+              />
               <Text style={styles.liveText}>Live</Text>
             </View>
-          </View>
-
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Free spots</Text>
-            <Text style={[styles.metricValue, styles.metricGreen]}>{metrics.free}</Text>
-            <Text style={styles.metricLabelSmall}>available now</Text>
-            <Text style={styles.metricLabelXS}>of {metrics.total} total</Text>
-          </View>
+          </Animated.View>
         </View>
 
         {/* ── Quick actions ────────────────────────────────────── */}
