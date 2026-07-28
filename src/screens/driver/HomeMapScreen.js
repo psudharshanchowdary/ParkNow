@@ -1,10 +1,10 @@
-// Built Day 10
+// Polished Day 19
 /**
  * @file HomeMapScreen.js
  * @description Driver Map Home screen featuring real-time parking lots map display and location integration.
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,8 @@ import {
   Platform,
   SafeAreaView,
   StatusBar,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import Geolocation from 'react-native-geolocation-service';
@@ -62,6 +64,9 @@ const HomeMapScreen = ({ navigation }) => {
   const bottomSheetRef = useRef(null);
   const mapRef = useRef(null);
 
+  /** Array of Animated.Values for lot card stagger animations. */
+  const lotAnims = useRef([]).current;
+
   const snapPoints = useMemo(() => ['18%', '48%'], []);
 
   // Request location permissions and fetch coordinate on mount
@@ -104,6 +109,27 @@ const HomeMapScreen = ({ navigation }) => {
       }
     };
   }, []);
+
+  /**
+   * Runs staggered entrance animation for lot cards.
+   * Each card animates opacity 0→1 and translateY 20→0.
+   */
+  useEffect(() => {
+    // Reset and rebuild anim array matching current lots length
+    lotAnims.length = 0;
+    lots.forEach(() => lotAnims.push(new Animated.Value(0)));
+
+    if (lotAnims.length === 0) return;
+
+    const stagger = Animated.stagger(
+      100,
+      lotAnims.map((anim) =>
+        Animated.timing(anim, { toValue: 1, duration: 300, useNativeDriver: true })
+      )
+    );
+    stagger.start();
+    return () => stagger.stop();
+  }, [lots]);
 
   /** Fetches the driver's current coordinates using geolocation services. */
   const getCurrentUserLocation = () => {
@@ -169,6 +195,18 @@ const HomeMapScreen = ({ navigation }) => {
 
     return listWithDistance;
   }, [lots, userLocation, searchQuery]);
+
+  /** Renders each lot card with its staggered animation. */
+  const renderLotCard = useCallback(({ item, index }) => {
+    const anim = lotAnims[index] || new Animated.Value(1);
+    const opacity = anim;
+    const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] });
+    return (
+      <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+        <LotCard item={item} onPress={() => navigation.navigate('LotDetailScreen', { lotId: item.id })} />
+      </Animated.View>
+    );
+  }, [lotAnims, navigation]);
 
   return (
     <SafeAreaView style={styles.safeContainer}>
@@ -262,34 +300,11 @@ const HomeMapScreen = ({ navigation }) => {
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.cardsScroll}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.lotCard}
-                    onPress={() => navigation.navigate('LotDetailScreen', { lotId: item.id })}
-                  >
-                    <Text style={styles.lotName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <View style={styles.lotMetaRow}>
-                      <Text style={styles.lotMetaText}>
-                        {formatDistance(item.distance)}
-                      </Text>
-                      <Text style={styles.lotDot}>•</Text>
-                      <Text
-                        style={[
-                          styles.lotStatus,
-                          item.availableSpots === 0 ? styles.lotStatusFull : styles.lotStatusFree,
-                        ]}
-                      >
-                        {item.availableSpots > 0 ? `${item.availableSpots} spots` : 'Full'}
-                      </Text>
-                    </View>
-                    <View style={styles.priceRow}>
-                      <Text style={styles.priceValue}>₹{item.pricePerHour}</Text>
-                      <Text style={styles.priceLabel}>/hr</Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
+                renderItem={renderLotCard}
+                removeClippedSubviews={true}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                initialNumToRender={8}
               />
             )}
           </View>
@@ -538,5 +553,32 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 });
+
+/** Memoized lot card component for FlatList render optimization. */
+const LotCard = React.memo(({ item, onPress }) => (
+  <TouchableOpacity style={styles.lotCard} onPress={onPress}>
+    <Text style={styles.lotName} numberOfLines={1}>
+      {item.name}
+    </Text>
+    <View style={styles.lotMetaRow}>
+      <Text style={styles.lotMetaText}>
+        {formatDistance(item.distance)}
+      </Text>
+      <Text style={styles.lotDot}>•</Text>
+      <Text
+        style={[
+          styles.lotStatus,
+          item.availableSpots === 0 ? styles.lotStatusFull : styles.lotStatusFree,
+        ]}
+      >
+        {item.availableSpots > 0 ? `${item.availableSpots} spots` : 'Full'}
+      </Text>
+    </View>
+    <View style={styles.priceRow}>
+      <Text style={styles.priceValue}>₹{item.pricePerHour}</Text>
+      <Text style={styles.priceLabel}>/hr</Text>
+    </View>
+  </TouchableOpacity>
+));
 
 export default HomeMapScreen;
