@@ -1,4 +1,5 @@
 // Built Day 13
+// Polished Day 19
 /**
  * @file QRTicketScreen.js
  * @description Booking confirmation screen showing a QR code ticket, booking
@@ -25,10 +26,15 @@ import { COLORS } from '../../theme/colors';
 import { getBookingWithLotDetails } from '../../services/bookingService';
 import { formatBookingDate, shortBookingId } from '../../utils/formatters';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const CONFETTI_COLORS = ['#7C3AED', '#10B981', '#FF6B35', '#F59E0B', '#A855F7', '#38BDF8'];
+
+/** Generates a fixed random left offset (0–95%) for each confetti piece. */
+const CONFETTI_LEFT = Array.from({ length: 20 }, () => Math.random() * 95);
 
 /** QRTicketScreen functional component — replaces Payment in the stack. */
-const QRTicketScreen = ({ route, navigation }) => {
+const QRTicketScreen = React.memo(({ route, navigation }) => {
   const { bookingId } = route.params || {};
 
   const [booking, setBooking] = useState(null);
@@ -41,6 +47,22 @@ const QRTicketScreen = ({ route, navigation }) => {
   const ring2Scale = useRef(new Animated.Value(1)).current;
   const ring1Loop = useRef(null);
   const ring2Loop = useRef(null);
+
+  // --- Day 19: Confetti animations (20 pieces) ---
+  const confettiAnims = useRef(
+    Array.from({ length: 20 }, () => ({
+      y: new Animated.Value(-50),
+      opacity: new Animated.Value(1),
+    }))
+  ).current;
+
+  // --- Day 19: Detail row stagger animations (7 rows) ---
+  const rowAnims = useRef(
+    Array.from({ length: 7 }, () => ({
+      x: new Animated.Value(-20),
+      opacity: new Animated.Value(0),
+    }))
+  ).current;
 
   /** Starts the success checkmark spring-in animation. */
   const startCheckmarkAnimation = useCallback(() => {
@@ -115,13 +137,49 @@ const QRTicketScreen = ({ route, navigation }) => {
 
     fetchBooking();
 
+    // Day 19: confetti on mount
+    const confettiAnim = Animated.stagger(
+      80,
+      confettiAnims.map((anim) =>
+        Animated.parallel([
+          Animated.timing(anim.y, {
+            toValue: SCREEN_HEIGHT,
+            duration: 2000 + Math.random() * 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim.opacity, {
+            toValue: 0,
+            duration: 2500,
+            useNativeDriver: true,
+          }),
+        ])
+      )
+    );
+    confettiAnim.start();
+
+    // Day 19: detail row stagger with 500ms delay
+    const rowTimer = setTimeout(() => {
+      Animated.stagger(
+        60,
+        rowAnims.map((a) =>
+          Animated.parallel([
+            Animated.timing(a.x, { toValue: 0, duration: 300, useNativeDriver: true }),
+            Animated.timing(a.opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+          ])
+        )
+      ).start();
+    }, 500);
+
     // Cleanup: stop all loop animations on unmount
     return () => {
       isMounted = false;
       if (ring1Loop.current) ring1Loop.current.stop();
       if (ring2Loop.current) ring2Loop.current.stop();
+      confettiAnims.forEach((a) => { a.y.stopAnimation(); a.opacity.stopAnimation(); });
+      rowAnims.forEach((a) => { a.x.stopAnimation(); a.opacity.stopAnimation(); });
+      clearTimeout(rowTimer);
     };
-  }, [bookingId, startCheckmarkAnimation, startRingAnimations]);
+  }, [bookingId, startCheckmarkAnimation, startRingAnimations, confettiAnims, rowAnims]);
 
   /** Navigates to NavigationScreen with lot coordinates. */
   const handleNavigateToLot = useCallback(() => {
@@ -194,6 +252,22 @@ const QRTicketScreen = ({ route, navigation }) => {
   // ─── Main ticket UI ───────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safeContainer}>
+      {/* Day 19: Confetti overlay */}
+      {confettiAnims.map((anim, i) => (
+        <Animated.View
+          key={i}
+          pointerEvents="none"
+          style={[
+            styles.confettiPiece,
+            {
+              left: `${CONFETTI_LEFT[i]}%`,
+              backgroundColor: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+              transform: [{ translateY: anim.y }],
+              opacity: anim.opacity,
+            },
+          ]}
+        />
+      ))}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -260,13 +334,20 @@ const QRTicketScreen = ({ route, navigation }) => {
               valueStyle: styles.valueSmall,
             },
           ].map((row, i, arr) => (
-            <View
+            <Animated.View
               key={row.label}
-              style={[styles.detailRow, i < arr.length - 1 ? styles.detailRowBorder : null]}
+              style={[
+                styles.detailRow,
+                i < arr.length - 1 ? styles.detailRowBorder : null,
+                {
+                  opacity: rowAnims[i] ? rowAnims[i].opacity : 1,
+                  transform: [{ translateX: rowAnims[i] ? rowAnims[i].x : 0 }],
+                },
+              ]}
             >
               <Text style={styles.detailLabel}>{row.label}</Text>
               <Text style={[styles.detailValue, row.valueStyle]}>{row.value}</Text>
-            </View>
+            </Animated.View>
           ))}
         </View>
 
@@ -295,12 +376,20 @@ const QRTicketScreen = ({ route, navigation }) => {
       </ScrollView>
     </SafeAreaView>
   );
-};
+});
 
 const styles = StyleSheet.create({
   safeContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  confettiPiece: {
+    position: 'absolute',
+    top: 0,
+    width: 6,
+    height: 6,
+    borderRadius: 2,
+    zIndex: 999,
   },
   loadingContainer: {
     flex: 1,
