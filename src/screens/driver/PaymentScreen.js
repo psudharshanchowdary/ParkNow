@@ -1,10 +1,11 @@
 // Built Day 12 — Updated Day 18 (notification wiring)
+// Polished Day 19
 /**
  * @file PaymentScreen.js
  * @description Payment gateway integration screen with ParkCoins discount, Razorpay checkout, and booking confirmation.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +15,7 @@ import {
   SafeAreaView,
   Switch,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import firestore from '@react-native-firebase/firestore';
@@ -45,7 +47,7 @@ export const calculateFinalPayable = (totalAmount, discount) => {
 };
 
 /** PaymentScreen functional component. */
-const PaymentScreen = ({ route, navigation }) => {
+const PaymentScreen = React.memo(({ route, navigation }) => {
   const {
     lotId,
     lotName,
@@ -67,6 +69,27 @@ const PaymentScreen = ({ route, navigation }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // ── Day 19 animation refs ──────────────────────────────────────────────────
+  /** Animated Y offset for order summary slide-down. */
+  const orderY = useRef(new Animated.Value(-30)).current;
+  /** Animated opacity for order summary slide-down. */
+  const orderOpacity = useRef(new Animated.Value(0)).current;
+  /** Animated rotation value for coin icon spin (0→1 maps to 0°→360°). */
+  const coinRotation = useRef(new Animated.Value(0)).current;
+  /** Three opacity refs for the processing dots pulse animation. */
+  const dotsOpacity = [
+    useRef(new Animated.Value(1)),
+    useRef(new Animated.Value(1)),
+    useRef(new Animated.Value(1)),
+  ];
+  const dotsLoop = useRef(null);
+
+  /** Interpolated coin icon rotation string. */
+  const coinRotateStr = coinRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
   // Fetches user ParkCoins balance on mount
   useEffect(() => {
     let isMounted = true;
@@ -85,6 +108,58 @@ const PaymentScreen = ({ route, navigation }) => {
       isMounted = false;
     };
   }, [uid]);
+
+  /** Slides order summary card down on mount. */
+  useEffect(() => {
+    const anim = Animated.parallel([
+      Animated.timing(orderY, { toValue: 0, duration: 400, useNativeDriver: true }),
+      Animated.timing(orderOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => {
+      orderY.stopAnimation();
+      orderOpacity.stopAnimation();
+    };
+  }, [orderY, orderOpacity]);
+
+  /** Spins the coin icon when useCoins is toggled ON. */
+  useEffect(() => {
+    if (useCoins) {
+      coinRotation.setValue(0);
+      Animated.timing(coinRotation, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+    } else {
+      coinRotation.stopAnimation();
+      coinRotation.setValue(0);
+    }
+    return () => {
+      coinRotation.stopAnimation();
+    };
+  }, [useCoins, coinRotation]);
+
+  /** Pulses the three processing dots when payment is in flight. */
+  useEffect(() => {
+    if (isProcessing) {
+      dotsLoop.current = Animated.loop(
+        Animated.stagger(
+          200,
+          dotsOpacity.map((d) =>
+            Animated.sequence([
+              Animated.timing(d.current, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+              Animated.timing(d.current, { toValue: 1, duration: 300, useNativeDriver: true }),
+            ])
+          )
+        )
+      );
+      dotsLoop.current.start();
+    } else {
+      if (dotsLoop.current) dotsLoop.current.stop();
+      dotsOpacity.forEach((d) => d.current.setValue(1));
+    }
+    return () => {
+      if (dotsLoop.current) dotsLoop.current.stop();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProcessing]);
 
   // Derived discount and final amount calculations
   const coinDiscount = useMemo(() => {
@@ -274,7 +349,9 @@ const PaymentScreen = ({ route, navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Order Summary Card */}
-        <View style={styles.card}>
+        <Animated.View
+          style={[styles.card, { opacity: orderOpacity, transform: [{ translateY: orderY }] }]}
+        >
           <Text style={styles.cardSectionTitle}>Order summary</Text>
           <Text style={styles.summaryTitle}>
             Spot {spotLabel} · {lotName}
@@ -284,13 +361,15 @@ const PaymentScreen = ({ route, navigation }) => {
           </Text>
           <View style={styles.divider} />
           <Text style={styles.summaryTotal}>Total: ₹{totalAmount}</Text>
-        </View>
+        </Animated.View>
 
         {/* ParkCoins Toggle Card */}
         <View style={styles.card}>
           <View style={styles.coinHeaderRow}>
             <View style={styles.coinTitleLeft}>
-              <Icon name="disc" size={20} style={styles.coinIcon} />
+              <Animated.View style={{ transform: [{ rotate: coinRotateStr }] }}>
+                <Icon name="disc" size={20} style={styles.coinIcon} />
+              </Animated.View>
               <Text style={styles.coinTitleText}>Use ParkCoins</Text>
             </View>
             <Switch
@@ -416,7 +495,11 @@ const PaymentScreen = ({ route, navigation }) => {
           onPress={handlePayment}
         >
           {isProcessing ? (
-            <ActivityIndicator color={COLORS.textPrimary} size="small" />
+            <View style={styles.dotsRow}>
+              {dotsOpacity.map((d, idx) => (
+                <Animated.View key={idx} style={[styles.dot, { opacity: d.current }]} />
+              ))}
+            </View>
           ) : (
             <Text style={styles.payButtonText}>Pay ₹{finalAmount}</Text>
           )}
@@ -427,7 +510,7 @@ const PaymentScreen = ({ route, navigation }) => {
       </View>
     </SafeAreaView>
   );
-};
+});
 
 const styles = StyleSheet.create({
   safeContainer: {
@@ -662,6 +745,18 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 11,
     textAlign: 'center',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.textPrimary,
   },
 });
 
