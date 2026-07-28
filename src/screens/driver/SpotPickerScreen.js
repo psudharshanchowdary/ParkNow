@@ -1,10 +1,10 @@
-// Built Day 11
+// Polished Day 19
 /**
  * @file SpotPickerScreen.js
  * @description Screen for selecting a parking spot with interactive grid and animated selection cards.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,14 @@ const SpotPickerScreen = ({ route, navigation }) => {
   // Animated values for spring scale and slide-up timing animations
   const scaleValue = useRef(new Animated.Value(1.0)).current;
   const slideValue = useRef(new Animated.Value(250)).current;
+
+  // --- Day 19 Animation refs ---
+  /** Animated.Value for continue button scale-in spring. */
+  const btnScaleAnim = useRef(new Animated.Value(0)).current;
+  /** Animated.Value for selected spot pulse. */
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  /** Animated.Value for info card opacity. */
+  const cardOpacityAnim = useRef(new Animated.Value(0)).current;
 
   // Subscribe to spots in real-time
   useEffect(() => {
@@ -66,16 +74,19 @@ const SpotPickerScreen = ({ route, navigation }) => {
     if (spot.status !== 'available') return;
 
     if (selectedSpot && selectedSpot.spotId === spot.spotId) {
-      // Deselect spot
+      // Deselect spot — hide button and card
       setSelectedSpot(null);
       Animated.parallel([
         Animated.spring(scaleValue, { toValue: 1.0, useNativeDriver: true }),
         Animated.timing(slideValue, { toValue: 250, duration: 250, useNativeDriver: true }),
+        Animated.spring(btnScaleAnim, { toValue: 0, useNativeDriver: true }),
+        Animated.timing(cardOpacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]).start();
     } else {
-      // Select new spot
+      // Select new spot — show button, card, and run pulse
       setSelectedSpot(spot);
       scaleValue.setValue(1.0);
+      pulseAnim.setValue(1);
       Animated.parallel([
         Animated.spring(scaleValue, {
           toValue: 1.1,
@@ -88,9 +99,21 @@ const SpotPickerScreen = ({ route, navigation }) => {
           duration: 300,
           useNativeDriver: true,
         }),
+        Animated.spring(btnScaleAnim, {
+          toValue: 1.0,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cardOpacityAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+      ]).start();
+      // Spot pulse: scale 1 → 1.15 → 1.0
+      Animated.sequence([
+        Animated.spring(pulseAnim, { toValue: 1.15, useNativeDriver: true }),
+        Animated.spring(pulseAnim, { toValue: 1.0, useNativeDriver: true }),
       ]).start();
     }
-  }, [selectedSpot, scaleValue, slideValue]);
+  }, [selectedSpot, scaleValue, slideValue, btnScaleAnim, cardOpacityAnim, pulseAnim]);
 
   /** Navigates to BookingFormScreen with selection parameters. */
   const handleContinue = useCallback(() => {
@@ -157,26 +180,17 @@ const SpotPickerScreen = ({ route, navigation }) => {
           {spots.map((item) => {
             const isSelected = selectedSpot && selectedSpot.spotId === item.spotId;
             const isOccupied = item.status === 'occupied';
-
             const spotScale = isSelected ? scaleValue : 1.0;
-
+            const extraPulse = isSelected ? pulseAnim : null;
             return (
-              <Animated.View
+              <SpotGridItem
                 key={item.spotId}
-                style={{ transform: [{ scale: spotScale }] }}
-              >
-                <TouchableOpacity
-                  style={[
-                    styles.spotBox,
-                    isOccupied ? styles.spotOccupied : styles.spotAvailable,
-                    isSelected ? styles.spotSelected : null,
-                  ]}
-                  disabled={isOccupied}
-                  onPress={() => handleSpotPress(item)}
-                >
-                  <Text style={styles.spotLabel}>{item.label}</Text>
-                </TouchableOpacity>
-              </Animated.View>
+                item={item}
+                isSelected={isSelected}
+                isOccupied={isOccupied}
+                spotScale={spotScale}
+                onPress={handleSpotPress}
+              />
             );
           })}
         </View>
@@ -187,7 +201,10 @@ const SpotPickerScreen = ({ route, navigation }) => {
         <Animated.View
           style={[
             styles.animatedCard,
-            { transform: [{ translateY: slideValue }] },
+            {
+              transform: [{ translateY: slideValue }],
+              opacity: cardOpacityAnim,
+            },
           ]}
         >
           <View style={styles.detailRow}>
@@ -211,16 +228,18 @@ const SpotPickerScreen = ({ route, navigation }) => {
 
       {/* Footer Continue Button */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[
-            styles.continueButton,
-            !selectedSpot ? styles.continueButtonDisabled : null,
-          ]}
-          disabled={!selectedSpot}
-          onPress={handleContinue}
-        >
-          <Text style={styles.continueButtonText}>Continue →</Text>
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: btnScaleAnim }] }}>
+          <TouchableOpacity
+            style={[
+              styles.continueButton,
+              !selectedSpot ? styles.continueButtonDisabled : null,
+            ]}
+            disabled={!selectedSpot}
+            onPress={handleContinue}
+          >
+            <Text style={styles.continueButtonText}>Continue →</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
     </SafeAreaView>
   );
@@ -421,5 +440,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+/** Memoized spot grid item with scale animation. */
+const SpotGridItem = React.memo(({ item, isSelected, isOccupied, spotScale, onPress }) => (
+  <Animated.View style={{ transform: [{ scale: spotScale }] }}>
+    <TouchableOpacity
+      style={[
+        styles.spotBox,
+        isOccupied ? styles.spotOccupied : styles.spotAvailable,
+        isSelected ? styles.spotSelected : null,
+      ]}
+      disabled={isOccupied}
+      onPress={() => onPress(item)}
+    >
+      <Text style={styles.spotLabel}>{item.label}</Text>
+    </TouchableOpacity>
+  </Animated.View>
+));
 
 export default SpotPickerScreen;
