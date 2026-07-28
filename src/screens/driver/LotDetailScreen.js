@@ -1,10 +1,10 @@
-// Built Day 11
+// Polished Day 19
 /**
  * @file LotDetailScreen.js
  * @description Screen displaying parking lot details, real-time availability stats, spot grid, and reviews.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Linking,
   FlatList,
+  Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { COLORS } from '../../theme/colors';
@@ -34,6 +35,11 @@ const LotDetailScreen = ({ route, navigation }) => {
 
   const currentUser = authService.getCurrentUser();
   const uid = currentUser ? currentUser.uid : 'temp_user_id';
+
+  /** Animated.Value for heart icon bounce scale. */
+  const heartScaleAnim = useRef(new Animated.Value(1)).current;
+  /** Array of Animated.Values for spot grid stagger springs. */
+  const spotAnimsRef = useRef([]);
 
   // Fetches initial favorite status
   useEffect(() => {
@@ -86,15 +92,40 @@ const LotDetailScreen = ({ route, navigation }) => {
     };
   }, [lotId]);
 
-  /** Toggles the lot in user's favorites collection. */
+  /**
+   * Runs staggered spring entrance for spot grid items.
+   * Each spot animates scale 0→1 on first appearance.
+   */
+  useEffect(() => {
+    // Rebuild anim array to match spots count
+    spotAnimsRef.current = spots.map(() => new Animated.Value(0));
+    if (spotAnimsRef.current.length === 0) return;
+
+    const stagger = Animated.stagger(
+      20,
+      spotAnimsRef.current.map((a) =>
+        Animated.spring(a, { toValue: 1, useNativeDriver: true })
+      )
+    );
+    stagger.start();
+    return () => stagger.stop();
+  }, [spots]);
+
+  /** Toggles the lot in user's favorites collection with heart bounce animation. */
   const handleToggleFavorite = useCallback(async () => {
+    // Heart bounce: spring to 1.4 then back to 1.0
+    const bounce = Animated.sequence([
+      Animated.spring(heartScaleAnim, { toValue: 1.4, useNativeDriver: true }),
+      Animated.spring(heartScaleAnim, { toValue: 1.0, useNativeDriver: true }),
+    ]);
+    bounce.start();
     try {
       const added = await parkingService.toggleFavorite(uid, lotId);
       setIsFavorite(added);
     } catch (err) {
       // Safe catch for favoriting UI
     }
-  }, [uid, lotId]);
+  }, [uid, lotId, heartScaleAnim]);
 
   /** Directs the driver to Google Maps with lot coordinates. */
   const handleViewInMaps = useCallback(async () => {
@@ -141,10 +172,10 @@ const LotDetailScreen = ({ route, navigation }) => {
     navigation.goBack();
   }, [navigation]);
 
-  // Derived counts from real-time spots subcollection
-  const availableCount = spots.filter((s) => s.status === 'available').length;
-  const occupiedCount = spots.filter((s) => s.status === 'occupied').length;
-  const totalCount = spots.length || 20;
+  // Derived counts from real-time spots subcollection — memoized
+  const availableCount = useMemo(() => spots.filter((s) => s.status === 'available').length, [spots]);
+  const occupiedCount = useMemo(() => spots.filter((s) => s.status === 'occupied').length, [spots]);
+  const totalCount = useMemo(() => spots.length || 20, [spots]);
 
   // Calculates distance using Haversine helper
   const distanceStr = useMemo(() => {
@@ -186,11 +217,13 @@ const LotDetailScreen = ({ route, navigation }) => {
           {lot.name}
         </Text>
         <TouchableOpacity onPress={handleToggleFavorite}>
-          <Icon
-            name={isFavorite ? 'heart' : 'heart-outline'}
-            size={24}
-            style={isFavorite ? styles.favIconActive : styles.favIconInactive}
-          />
+          <Animated.View style={{ transform: [{ scale: heartScaleAnim }] }}>
+            <Icon
+              name={isFavorite ? 'heart' : 'heart-outline'}
+              size={24}
+              style={isFavorite ? styles.favIconActive : styles.favIconInactive}
+            />
+          </Animated.View>
         </TouchableOpacity>
       </View>
 
@@ -247,17 +280,12 @@ const LotDetailScreen = ({ route, navigation }) => {
         {/* Spot Map Grid Section */}
         <Text style={styles.sectionTitle}>Spot map</Text>
         <View style={styles.gridContainer}>
-          {spots.map((spot) => (
-            <View
-              key={spot.spotId}
-              style={[
-                styles.gridSpot,
-                spot.status === 'available' ? styles.spotAvailable : styles.spotOccupied,
-              ]}
-            >
-              <Text style={styles.spotText}>{spot.label}</Text>
-            </View>
-          ))}
+          {spots.map((spot, index) => {
+            const anim = spotAnimsRef.current[index] || new Animated.Value(1);
+            return (
+              <GridSpotItem key={spot.spotId} spot={spot} anim={anim} />
+            );
+          })}
         </View>
 
         {/* Legend */}
@@ -599,5 +627,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+/** Memoized grid spot item with spring scale animation. */
+const GridSpotItem = React.memo(({ spot, anim }) => (
+  <Animated.View style={{ transform: [{ scale: anim }] }}>
+    <View
+      style={[
+        styles.gridSpot,
+        spot.status === 'available' ? styles.spotAvailable : styles.spotOccupied,
+      ]}
+    >
+      <Text style={styles.spotText}>{spot.label}</Text>
+    </View>
+  </Animated.View>
+));
 
 export default LotDetailScreen;
