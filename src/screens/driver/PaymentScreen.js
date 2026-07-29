@@ -24,6 +24,7 @@ import * as authService from '../../services/authService';
 import * as bookingService from '../../services/bookingService';
 import * as coinsService from '../../services/coinsService';
 import { scheduleBookingReminder } from '../../services/notificationService';
+import { ENV } from '../../config/env';
 import { formatBookingDate } from '../../utils/formatters';
 
 let RazorpayCheckout = null;
@@ -288,8 +289,7 @@ const PaymentScreen = React.memo(({ route, navigation }) => {
         paymentMethod: selectedMethod,
       });
 
-      // TODO: Replace 'YOUR_RAZORPAY_KEY_ID' with your actual Razorpay Key ID from the Dashboard
-      const razorpayKey = 'YOUR_RAZORPAY_KEY_ID';
+      const razorpayKey = ENV.RAZORPAY_KEY || 'YOUR_RAZORPAY_KEY_ID';
 
       const options = {
         description: 'ParkNow Parking Booking',

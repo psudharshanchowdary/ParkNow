@@ -17,6 +17,7 @@ import {
   SafeAreaView,
   Animated,
   Alert,
+  BackHandler,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import firestore from '@react-native-firebase/firestore';
@@ -130,6 +131,23 @@ const AdminDashboardScreen = ({ navigation }) => {
       cardOpacity.forEach((o) => o.stopAnimation());
     };
   }, [startPulse, cardScale, cardOpacity, pulseAnim, pulseScaleAnim]);
+
+  // Handle Android hardware back press on main Admin screen
+  useEffect(() => {
+    const backAction = () => {
+      Alert.alert(
+        'Exit ParkNow',
+        'Are you sure you want to exit?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => null },
+          { text: 'Exit', onPress: () => BackHandler.exitApp() },
+        ]
+      );
+      return true;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, []);
 
   // Fetch admin's lot from Firestore user document
   useEffect(() => {

@@ -18,6 +18,8 @@ import {
   StatusBar,
   Animated,
   Dimensions,
+  BackHandler,
+  Alert,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import Geolocation from 'react-native-geolocation-service';
@@ -25,6 +27,7 @@ import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import BottomSheet from '@gorhom/bottom-sheet';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { COLORS } from '../../theme/colors';
+import { ENV } from '../../config/env';
 import * as parkingService from '../../services/parkingService';
 import { calculateDistance, formatDistance } from '../../utils/formatters';
 
@@ -94,6 +97,23 @@ const HomeMapScreen = ({ navigation }) => {
     };
 
     handlePermissions();
+  }, []);
+
+  // Handle Android hardware back press on main Driver screen
+  useEffect(() => {
+    const backAction = () => {
+      Alert.alert(
+        'Exit ParkNow',
+        'Are you sure you want to exit?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => null },
+          { text: 'Exit', onPress: () => BackHandler.exitApp() },
+        ]
+      );
+      return true;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
   }, []);
 
   // Listen to Firestore real-time parking lots database updates
