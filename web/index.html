@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ParkNow — Interactive Web Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0D0D14;
+      --surface: #1A1A2E;
+      --card: #252540;
+      --primary: #7C3AED;
+      --primary-light: #A855F7;
+      --available: #10B981;
+      --occupied: #FF3B5C;
+      --gold: #F59E0B;
+      --coins: #FF6B35;
+      --border: #2D2D4A;
+      --text-primary: #FFFFFF;
+      --text-secondary: #A0A0B8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    body { background-color: #07070B; color: var(--text-primary); display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+    
+    header { text-align: center; margin-bottom: 20px; }
+    header h1 { font-size: 24px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    header p { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+
+    /* Navigation Screen Selector Bar */
+    .screen-selector { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 800px; margin-bottom: 20px; }
+    .screen-btn { background: var(--surface); color: var(--text-secondary); border: 1px solid var(--border); padding: 8px 14px; borderRadius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+    .screen-btn:hover, .screen-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    /* Phone Container Frame */
+    .phone-frame { width: 380px; height: 780px; background: var(--bg); border: 12px solid #1c1c24; border-radius: 44px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7), 0 0 30px rgba(124, 58, 237, 0.2); position: relative; overflow: hidden; display: flex; flex-direction: column; }
+    
+    /* Notch / Island */
+    .phone-notch { width: 120px; height: 26px; background: #1c1c24; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; align-items: center; justify-content: center; }
+    .camera-dot { width: 8px; height: 8px; background: #07070B; border-radius: 50%; margin-left: 40px; }
+
+    /* Status Bar */
+    .status-bar { height: 44px; padding: 0 24px; display: flex; align-items: flex-end; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--text-primary); z-index: 90; padding-bottom: 4px; }
+
+    /* Screen Views Container */
+    .screen-view { flex: 1; display: none; flex-direction: column; overflow-y: auto; position: relative; padding-bottom: 60px; }
+    .screen-view.active { display: flex; }
+
+    /* Bottom Tab Bar */
+    .bottom-tab-bar { height: 60px; background: var(--surface); border-top: 1px solid var(--border); display: flex; justify-content: space-around; align-items: center; position: absolute; bottom: 0; left: 0; right: 0; z-index: 90; }
+    .tab-item { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--text-secondary); font-size: 10px; font-weight: 500; cursor: pointer; text-decoration: none; }
+    .tab-item.active { color: var(--primary); font-weight: 700; }
+    .tab-icon { font-size: 20px; }
+
+    /* Common Card Styles */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin: 12px 16px; }
+    .btn-primary { background: var(--primary); color: #fff; border: none; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: 700; width: 100%; cursor: pointer; transition: transform 0.1s ease; text-align: center; }
+    .btn-primary:active { transform: scale(0.97); }
+
+    /* Map Mockup */
+    .map-container { height: 320px; background: #12121e; position: relative; overflow: hidden; background-image: radial-gradient(#2d2d4a 1px, transparent 1px); background-size: 20px 20px; }
+    .map-pin { position: absolute; background: var(--surface); border: 2px solid var(--available); color: var(--available); font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 12px; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4); cursor: pointer; }
+    .map-pin.occupied { border-color: var(--occupied); color: var(--occupied); box-shadow: 0 0 10px rgba(255, 59, 92, 0.4); }
+
+    /* Spot Grid */
+    .spot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 16px; }
+    .spot-cell { height: 50px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; border: 2px solid transparent; }
+    .spot-cell.available { background: rgba(16, 185, 129, 0.15); border-color: var(--available); color: var(--available); }
+    .spot-cell.occupied { background: rgba(255, 59, 92, 0.15); border-color: var(--occupied); color: var(--occupied); cursor: not-allowed; }
+    .spot-cell.selected { background: var(--primary); border-color: #fff; color: #fff; box-shadow: 0 0 15px rgba(124, 58, 237, 0.6); }
+
+    /* QR Container */
+    .qr-card { background: var(--surface); border-radius: 20px; padding: 24px; margin: 20px; text-align: center; border: 1px solid var(--border); }
+    .qr-box { width: 180px; height: 180px; background: #fff; margin: 0 auto 16px; padding: 12px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+    
+    /* Stats Bar Chart */
+    .chart-bar-container { display: flex; align-items: flex-end; justify-content: space-between; height: 140px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+    .chart-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+    .chart-bar { width: 22px; background: var(--primary); border-radius: 6px 6px 0 0; transition: height 0.5s ease; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🅿️ ParkNow</h1>
+    <p>Real-Time Parking Discovery & Advance Booking Platform</p>
+  </header>
+
+  <!-- Screen Selector -->
+  <div class="screen-selector">
+    <button class="screen-btn active" onclick="showScreen('home-map')">1. Home Map</button>
+    <button class="screen-btn" onclick="showScreen('spot-picker')">2. Spot Picker</button>
+    <button class="screen-btn" onclick="showScreen('booking-form')">3. Booking Form</button>
+    <button class="screen-btn" onclick="showScreen('qr-ticket')">4. QR Pass</button>
+    <button class="screen-btn" onclick="showScreen('wallet')">5. ParkCoins Wallet</button>
+    <button class="screen-btn" onclick="showScreen('admin-dashboard')">6. Admin Dashboard</button>
+    <button class="screen-btn" onclick="showScreen('revenue-report')">7. Revenue Analytics</button>
+  </div>
+
+  <!-- Mobile Frame -->
+  <div class="phone-frame">
+    <div class="phone-notch"><div class="camera-dot"></div></div>
+    
+    <div class="status-bar">
+      <span>9:41</span>
+      <span>5G 🔋</span>
+    </div>
+
+    <!-- 1. Home Map Screen -->
+    <div id="home-map" class="screen-view active">
+      <div style="padding: 12px 16px; background: var(--surface); display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--border);">
+        <input type="text" value="Phoenix MarketCity, Whitefield" style="flex: 1; background: var(--card); border: 1px solid var(--border); color: #fff; padding: 8px 12px; border-radius: 20px; font-size: 12px;">
+      </div>
+      <div class="map-container">
+        <div class="map-pin" style="top: 40px; left: 60px;">🅿️ 12 free</div>
+        <div class="map-pin occupied" style="top: 120px; left: 200px;">🅿️ Full</div>
+        <div class="map-pin" style="top: 200px; left: 120px;" onclick="showScreen('spot-picker')">🅿️ 08 free</div>
+      </div>
+      <div class="card" style="margin-top: -20px; z-index: 10; position: relative;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h3 style="font-size: 16px; font-weight: 700;">Phoenix MarketCity Lot A</h3>
+            <p style="color: var(--text-secondary); font-size: 12px; margin-top: 2px;">1.2 km away · 12 spots free</p>
+          </div>
+          <span style="color: var(--gold); font-weight: 700; font-size: 13px;">★ 4.8</span>
+        </div>
+        <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div><span style="font-size: 18px; font-weight: 800; color: var(--primary-light);">₹40</span><span style="font-size: 11px; color: var(--text-secondary);">/hr</span></div>
+          <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="showScreen('spot-picker')">Book a Spot</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Spot Picker Screen -->
+    <div id="spot-picker" class="screen-view">
+      <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 18px; cursor: pointer;" onclick="showScreen('home-map')">←</span>
+        <h2 style="font-size: 16px; font-weight: 700;">Select Parking Spot</h2>
+      </div>
+      <div style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border);">
+        <span style="color: var(--available); font-size: 12px; font-weight: 600;">● Available</span>
+        <span style="color: var(--occupied); font-size: 12px; font-weight: 600;">● Taken</span>
+        <span style="color: var(--primary); font-size: 12px; font-weight: 600;">● Selected</span>
+      </div>
+      <div class="spot-grid">
+        <div class="spot-cell available" onclick="selectSpot(this, 'A1')">A1</div>
+        <div class="spot-cell available" onclick="selectSpot(this, 'A2')">A2</div>
+        <div class="spot-cell occupied">A3</div>
+        <div class="spot-cell available" onclick="selectSpot(this, 'A4')">A4</div>
+        <div class="spot-cell occupied">B1</div>
+        <div class="spot-cell selected" id="default-spot" onclick="selectSpot(this, 'B2')">B2</div>
+        <div class="spot-cell available" onclick="selectSpot(this, 'B3')">B3</div>
+        <div class="spot-cell available" onclick="selectSpot(this, 'B4')">B4</div>
+      </div>
+      <div class="card" style="margin-top: auto;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+          <span style="color: var(--text-secondary); font-size: 13px;">Selected Spot</span>
+          <span style="font-weight: 700; color: var(--primary-light);" id="spot-label">Spot B2</span>
+        </div>
+        <button class="btn-primary" onclick="showScreen('booking-form')">Proceed to Booking</button>
+      </div>
+    </div>
+
+    <!-- 3. Booking Form Screen -->
+    <div id="booking-form" class="screen-view">
+      <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 18px; cursor: pointer;" onclick="showScreen('spot-picker')">←</span>
+        <h2 style="font-size: 16px; font-weight: 700;">Booking Details</h2>
+      </div>
+      <div class="card">
+        <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Vehicle Number</label>
+        <input type="text" value="KA 05 MG 1234" style="width: 100%; background: var(--surface); border: 1px solid var(--border); color: #fff; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700; text-transform: uppercase;">
+      </div>
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;"><span>Duration</span><span style="font-weight: 700;">2 Hours</span></div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;"><span>Rate</span><span>₹40 / hr</span></div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;"><span>GST (18%)</span><span>₹14</span></div>
+        <hr style="border-color: var(--border); margin: 12px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800;"><span>Total</span><span style="color: var(--primary-light);">₹94</span></div>
+      </div>
+      <div style="padding: 0 16px;">
+        <button class="btn-primary" onclick="showScreen('qr-ticket')">Pay ₹94 with Razorpay</button>
+      </div>
+    </div>
+
+    <!-- 4. QR Ticket Screen -->
+    <div id="qr-ticket" class="screen-view">
+      <div class="qr-card">
+        <span style="background: rgba(16,185,129,0.2); color: var(--available); padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700;">🎉 Booking Confirmed!</span>
+        <h3 style="margin: 16px 0 4px; font-size: 18px;">Phoenix MarketCity Lot A</h3>
+        <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 16px;">Spot B2 · Valid 2:00 PM - 4:00 PM</p>
+        <div class="qr-box">
+          <svg width="150" height="150" viewBox="0 0 100 100">
+            <rect width="100" height="100" fill="#ffffff" />
+            <path d="M10 10h30v30h-30z M20 20h10v10h-10z M60 10h30v30h-30z M70 20h10v10h-10z M10 60h30v30h-30z M20 70h10v10h-10z M50 50h10v10h-10z M70 50h20v10h-20z M50 70h20v20h-20z" fill="#000000" />
+          </svg>
+        </div>
+        <span style="color: var(--gold); font-size: 13px; font-weight: 600;">🪙 +5 ParkCoins Earned</span>
+      </div>
+    </div>
+
+    <!-- 5. ParkCoins Wallet Screen -->
+    <div id="wallet" class="screen-view">
+      <div class="card" style="background: linear-gradient(135deg, var(--card), #3b1d70); text-align: center; padding: 24px;">
+        <span style="font-size: 12px; color: var(--text-secondary);">PARKCOINS BALANCE</span>
+        <h1 style="font-size: 42px; font-weight: 800; color: var(--gold); margin: 8px 0;">350 🪙</h1>
+        <p style="font-size: 12px; color: var(--text-secondary);">= ₹35 discount value on bookings</p>
+      </div>
+    </div>
+
+    <!-- 6. Admin Dashboard Screen -->
+    <div id="admin-dashboard" class="screen-view">
+      <div style="padding: 16px; border-bottom: 1px solid var(--border);">
+        <h2 style="font-size: 18px; font-weight: 800;">Admin Dashboard</h2>
+        <p style="font-size: 12px; color: var(--text-secondary);">Phoenix MarketCity Lot A</p>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 16px;">
+        <div class="card" style="margin: 0; padding: 12px;">
+          <span style="font-size: 11px; color: var(--text-secondary);">Today Revenue</span>
+          <h3 style="font-size: 18px; color: var(--primary-light); margin-top: 4px;">₹4,800</h3>
+        </div>
+        <div class="card" style="margin: 0; padding: 12px;">
+          <span style="font-size: 11px; color: var(--text-secondary);">Occupancy</span>
+          <h3 style="font-size: 18px; color: var(--available); margin-top: 4px;">75% Full</h3>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Revenue Analytics Screen -->
+    <div id="revenue-report" class="screen-view">
+      <div class="card">
+        <span style="font-size: 12px; color: var(--text-secondary);">7 Days Total Revenue</span>
+        <h2 style="font-size: 28px; font-weight: 800; color: #fff; margin: 4px 0;">₹48,500</h2>
+        <span style="color: var(--available); font-size: 12px;">↑ +18% vs last period</span>
+        <div class="chart-bar-container">
+          <div class="chart-col"><div class="chart-bar" style="height: 60px;"></div><span style="font-size: 10px; color: var(--text-secondary);">M</span></div>
+          <div class="chart-col"><div class="chart-bar" style="height: 90px;"></div><span style="font-size: 10px; color: var(--text-secondary);">T</span></div>
+          <div class="chart-col"><div class="chart-bar" style="height: 70px;"></div><span style="font-size: 10px; color: var(--text-secondary);">W</span></div>
+          <div class="chart-col"><div class="chart-bar" style="height: 110px;"></div><span style="font-size: 10px; color: var(--text-secondary);">T</span></div>
+          <div class="chart-col"><div class="chart-bar" style="height: 130px; background: var(--primary-light);"></div><span style="font-size: 10px; color: var(--text-secondary);">F</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Tab Bar Navigation -->
+    <div class="bottom-tab-bar">
+      <div class="tab-item active" onclick="showScreen('home-map')"><span class="tab-icon">🗺️</span><span>Map</span></div>
+      <div class="tab-item" onclick="showScreen('spot-picker')"><span class="tab-icon">🅿️</span><span>Spots</span></div>
+      <div class="tab-item" onclick="showScreen('qr-ticket')"><span class="tab-icon">🎟️</span><span>Pass</span></div>
+      <div class="tab-item" onclick="showScreen('wallet')"><span class="tab-icon">🪙</span><span>Coins</span></div>
+      <div class="tab-item" onclick="showScreen('admin-dashboard')"><span class="tab-icon">📊</span><span>Admin</span></div>
+    </div>
+  </div>
+
+  <script>
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen-view').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.screen-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+    }
+
+    function selectSpot(el, spotName) {
+      document.querySelectorAll('.spot-cell').forEach(s => s.classList.remove('selected'));
+      el.classList.add('selected');
+      document.getElementById('spot-label').innerText = 'Spot ' + spotName;
+    }
+  </script>
+</body>
+</html>
